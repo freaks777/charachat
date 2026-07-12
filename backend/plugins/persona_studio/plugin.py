@@ -397,7 +397,7 @@ class PersonaStudioPlugin(PluginBase):
             all_fields[i:i + _EXTRACTION_BATCH_SIZE]
             for i in range(0, len(all_fields), _EXTRACTION_BATCH_SIZE)
         ]
-        logger = logging.getLogger("rp_standalone")
+        logger = logging.getLogger("rp-standalone")
 
         all_fields_result = {}
         all_extra = []

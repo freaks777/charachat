@@ -138,7 +138,7 @@ async def _openai_stream(
                     if content:
                         yield content
                 except (json.JSONDecodeError, KeyError, IndexError) as e:
-                    logging.getLogger("rp_standalone").warning(
+                    logging.getLogger("rp-standalone").warning(
                         "API chunk parse error (openai): %s", e
                     )
                     continue
@@ -177,7 +177,7 @@ async def _openai_sync(
         if not content or not content.strip():
             # デバッグ: レスポンスの全キーをログ出力
             finish = data["choices"][0].get("finish_reason", "unknown")
-            logging.getLogger("rp_standalone").warning(
+            logging.getLogger("rp-standalone").warning(
                 "API empty content. finish_reason=%s, model=%s, msg_keys=%s, "
                 "reasoning_len=%d",
                 finish, model,
@@ -257,7 +257,7 @@ async def _anthropic_stream(
                             if text:
                                 yield text
                 except (json.JSONDecodeError, KeyError) as e:
-                    logging.getLogger("rp_standalone").warning(
+                    logging.getLogger("rp-standalone").warning(
                         "API chunk parse error (anthropic): %s", e
                     )
                     continue
@@ -369,7 +369,7 @@ async def _google_stream(
                             if text:
                                 yield text
                 except (json.JSONDecodeError, KeyError, IndexError) as e:
-                    logging.getLogger("rp_standalone").warning(
+                    logging.getLogger("rp-standalone").warning(
                         "API chunk parse error (google): %s", e
                     )
                     continue
