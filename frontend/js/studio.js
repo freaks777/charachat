@@ -216,10 +216,14 @@ async function extractFields() {
   const personaId = document.getElementById("t-persona-id").value.trim() || defaultPersonaId();
   setLoading(true, "抽出中...");
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 120000);  // 120秒
     const res = await fetch("/api/persona-studio/extract-fields", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text, persona_id: personaId }),
+      signal: controller.signal,
     });
+    clearTimeout(timeout);
     const data = await res.json();
     if (data.error) { setLoading(false); setStatus(data.error, true); return; }
 
@@ -229,7 +233,10 @@ async function extractFields() {
     const extraCount = (data.extra_sections || []).length;
     setStatus(`抽出完了: ${Object.keys(data.fields || {}).filter(k => data.fields[k]).length} 項目反映` + (extraCount > 0 ? ` / extra_sections: ${extraCount}件` : ""));
     showToast("✓ フィールド抽出完了。必要に応じて編集し「フォームから生成」を押してください");
-  } catch (err) { setLoading(false); setStatus("通信エラー: " + err, true); }
+  } catch (err) {
+    setLoading(false);
+    setStatus(err.name === "AbortError" ? "タイムアウト（120秒）: API応答なし" : "通信エラー: " + err, true);
+  }
 }
 
 // ── 旧: テキスト→SOUL.md直接変換（非推奨、後方互換） ──
