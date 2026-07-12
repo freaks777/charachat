@@ -141,6 +141,9 @@ _EXTRACTION_FIELDS = [
     ("opening_scene", "セッション開始時の状況説明。空欄なら自動生成。例: 事務所。夕方。鏡花は窓際のソファで紅茶を飲んでいる。"),
 ]
 
+# 1バッチあたりの抽出フィールド数（無料枠の出力制限対策）
+_EXTRACTION_BATCH_SIZE = 10
+
 EXTRACT_FIELDS_PROMPT = """あなたは情報抽出エンジンです。以下のテキストからキャラクター情報を抽出してください。
 
 【最重要ルール】
@@ -388,12 +391,11 @@ class PersonaStudioPlugin(PluginBase):
         # 入力が長すぎるとプロンプトが膨らみ出力トークン不足になるためトリム
         trimmed = raw_text if len(raw_text) <= 6000 else raw_text[:6000]
 
-        # 3バッチに分割（1バッチあたり9〜10フィールド）
+        # バッチ分割（1バッチあたり最大 _EXTRACTION_BATCH_SIZE フィールド）
         all_fields = list(_EXTRACTION_FIELDS)
-        batch_size = 10
         batches = [
-            all_fields[i:i + batch_size]
-            for i in range(0, len(all_fields), batch_size)
+            all_fields[i:i + _EXTRACTION_BATCH_SIZE]
+            for i in range(0, len(all_fields), _EXTRACTION_BATCH_SIZE)
         ]
         logger = logging.getLogger("rp_standalone")
 
