@@ -383,7 +383,7 @@ class PersonaStudioPlugin(PluginBase):
         if not self._config:
             raise RuntimeError("persona_studio not configured")
 
-        config = self._make_config(max_tokens=8192)
+        config = self._make_config(max_tokens=16000)
         # 入力が長すぎるとプロンプトが膨らみ出力トークン不足になるためトリム
         trimmed = raw_text if len(raw_text) <= 6000 else raw_text[:6000]
         prompt = _build_extraction_prompt(trimmed)

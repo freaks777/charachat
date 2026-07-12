@@ -132,6 +132,9 @@ async def _openai_stream(
                         model_info["actual"] = chunk.get("model")
                     delta = chunk["choices"][0].get("delta", {})
                     content = delta.get("content", "")
+                    # DeepSeek推論モデル: reasoning_content に出力が入る場合
+                    if not content:
+                        content = delta.get("reasoning_content", "")
                     if content:
                         yield content
                 except (json.JSONDecodeError, KeyError, IndexError) as e:
@@ -165,7 +168,12 @@ async def _openai_sync(
         )
         resp.raise_for_status()
         data = resp.json()
-        content = data["choices"][0]["message"]["content"]
+        msg = data["choices"][0]["message"]
+        content = msg.get("content", "")
+        # DeepSeek R1/V3等の推論モデルは content が空で
+        # reasoning_content に出力が入る場合がある
+        if (not content or not content.strip()) and msg.get("reasoning_content"):
+            content = msg["reasoning_content"]
         if not content or not content.strip():
             finish = data["choices"][0].get("finish_reason", "unknown")
             logging.getLogger("rp_standalone").warning(
