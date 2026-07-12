@@ -91,14 +91,13 @@ pip install fastapi uvicorn httpx pyyaml python-dotenv ruamel.yaml
 
 ## Supported Providers / 対応プロバイダ
 
-`config.default.yaml` に全8プロバイダの設定が含まれているが、APIキーを取得していないものは**動作未検証**。
+`config.default.yaml` に全プロバイダの設定が含まれているが、APIキーを取得していないものは**動作未検証**。
 
-All 8 providers are configured in `config.default.yaml`, but those without a verified API key are **untested**.
+All providers are configured in `config.default.yaml`, but those without a verified API key are **untested**.
 
 | Provider | Interface | Status |
 |---|---|---|
 | OpenRouter | OpenAI-compatible | ✅ Verified |
-| OpenCode | OpenAI-compatible | ⚠️ Not tested (requires API key) |
 | OpenCode Go | OpenAI-compatible | ✅ Verified |
 | OpenCode Zen | OpenAI-compatible | ⚠️ Not tested (requires API key) |
 | OpenAI | OpenAI-compatible | ⚠️ Not tested (requires API key) |

@@ -65,7 +65,7 @@ providers:
       - deepseek-v4-pro
   # OpenCode Zen（有料プラン）。base_url と models は要確認。
   # OpenCode Zen (paid plan). Verify base_url and available models.
-  opencode:
+  opencode-zen:
     base_url: https://opencode.ai/zen/v1
     api_key: ${OPENCODE_API_KEY}
     models:
