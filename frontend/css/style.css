@@ -976,6 +976,7 @@ input.invalid {
   margin-bottom: 8px;
 }
 .saved-persona-name { font-size: 15px; font-weight: 600; color: var(--text); }
+.saved-persona-id { font-size: 11px; color: var(--text-dim); margin-left: 8px; }
 .saved-persona-date { font-size: 11px; color: var(--text-dim); margin-right: 8px; }
 .saved-persona-actions {
   display: flex;

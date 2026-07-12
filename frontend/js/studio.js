@@ -416,7 +416,10 @@ async function loadSavedPersonas() {
     container.innerHTML = personas.map(p => `
       <div class="saved-persona-item" onclick="loadDraft('${p.id}')" ondblclick="deletePersona('${p.id}')">
         <div class="saved-persona-main">
-          <span class="saved-persona-date">${p.updated || ''}</span>
+          <span class="saved-persona-meta">
+            <span class="saved-persona-date">${p.updated || ''}</span>
+            <span class="saved-persona-id">${escapeHtml(p.id)}</span>
+          </span>
           <span class="saved-persona-name">${escapeHtml(p.name)}</span>
         </div>
         <div class="saved-persona-actions">
