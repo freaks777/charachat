@@ -1,6 +1,7 @@
-# RPスタンドアロンアプリ 詳細設計書 v3（コア／プラグイン分離版）
+# RPスタンドアロンアプリ 詳細設計書 v3.4.2（コア／プラグイン分離版）
 
 作成: 2026-06-30
+最終更新: 2026-07-12 (v3.4.2)
 ベース: `スタンドアロン設計書.md`（CLI版）/ v2からの再構成
 
 ---
@@ -79,15 +80,22 @@ v2では機能を全部並列に詰め込んで肥大化したため、**コア*
 
 ```
 F:\LLM\hermes-work\rp-standalone\
+├── .gitignore                      # Git除外設定
+├── .gitattributes                  # 改行コード統一
+├── .env.example                    # 環境変数テンプレート
+├── README.md                       # プロジェクト概要・導入手順
+├── requirements.txt                # Python依存パッケージ
+├── start_server.bat                # Windows起動
+├── start_server.sh                 # macOS/Linux起動
 ├── backend/
 │   ├── main.py                     # FastAPIエントリポイント
 │   ├── config.yaml
-│   ├── config.default.yaml          # リセット用デフォルト設定
+│   ├── config.default.yaml          # デフォルト設定（日本語コメント完備）
 │   ├── server.log                   # RotatingFileHandler（10MB×3）
 │   ├── core/
 │   │   ├── api.py                  # マルチプロバイダAPI呼び出し
-│   │   ├── history.py              # 履歴管理（JSONL追記専用）
-│   │   ├── config.py               # config.yaml読込＋${ENV}解決
+│   │   ├── history.py              # 履歴管理（JSONL追記専用、アトミック保存）
+│   │   ├── config.py               # config.yaml読込＋${ENV}解決（ruamel.yaml＋アトミック書き込み）
 │   │   ├── persona_manager.py      # ペルソナ読込・切替＋IDバリデーション
 │   │   ├── session_context.py      # セッション横断コンテキスト
 │   │   └── embedding.py            # 埋め込み抽象層
@@ -104,7 +112,7 @@ F:\LLM\hermes-work\rp-standalone\
 │   └── data/
 │       └── secrets_store.json
 │
-├── frontend/                       # SPA（StaticFiles配信）
+├── frontend/                       # SPA（StaticFiles配信、SSEチャット）
 │   ├── index.html                  # チャット画面
 │   ├── sessions.html               # セッション一覧
 │   ├── session-setup.html          # 新規セッション設定
@@ -114,7 +122,7 @@ F:\LLM\hermes-work\rp-standalone\
 │   │   └── style.css
 │   └── js/
 │       ├── i18n.js                 # 日英切替＋エラーコード辞書
-│       ├── chat.js                 # チャットUI + WebSocket再接続
+│       ├── chat.js                 # チャットUI + SSE再接続
 │       ├── sessions.js
 │       ├── session-setup.js
 │       ├── settings.js
@@ -131,11 +139,8 @@ F:\LLM\hermes-work\rp-standalone\
 │   └── {persona_id}/
 │       └── YYYY-MM-DD.jsonl
 │
-├── session-log/                    # セッションMarkdownログ
+├── session-log/                    # 会話ログ（Markdown、ペルソナ別）
 ├── document/                       # 設計書
-├── start_server.sh
-├── start_server.bat
-├── .env
 └── .last-response
 ```
 
@@ -1333,3 +1338,44 @@ LLM出力形式（タグ・カテゴリ・__DEL__ すべて不要）:
 | `_dispatch_session_end_for_active()` | on_session_end dispatch を1箇所に集約 |
 | `_activate_session()` | switch+reload+スタイルロック+rebuild+保存の共通コアを抽出 |
 | `_auto_resume_session` + `resume_session` | 共通コア抽出により170行の重複を解消。バリデーションロジックの一元化 |
+
+#### 14.8.5 設定ファイル堅牢化（v3.4.2 — 2026-07-12）
+
+Geminiコードレビュー指摘対応。
+
+**① PyYAML → ruamel.yaml**
+
+`core/config.py` の YAML ライブラリを `PyYAML` から `ruamel.yaml` に置換。
+`update_config_yaml()` による設定書き戻し時に、ユーザーが手動で記述した `#` コメントが消失する問題を解決。
+
+```python
+from ruamel.yaml import YAML
+
+_yaml = YAML()
+_yaml.preserve_quotes = True
+_yaml.indent(mapping=2, sequence=4, offset=2)
+```
+
+**② 設定ファイルのアトミック書き込み**
+
+`update_config_yaml()` の書き込み処理を、直接上書き（`open(path, "w")`）から一時ファイル経由の `os.replace()` に変更。
+§14.8.3 の `history.py` と同パターン。ディスクフルや書き込み中クラッシュ時のファイル破損を防止。
+
+```python
+temp_path = config_path.with_suffix(config_path.suffix + ".tmp")
+with open(temp_path, "w", encoding="utf-8") as f:
+    _yaml.dump(raw, f)
+os.replace(temp_path, config_path)
+```
+
+#### 14.8.6 Git管理・ドキュメント整備（v3.4.2 — 2026-07-12）
+
+| 項目 | 内容 |
+|------|------|
+| `.gitignore` | 機密情報（`.env`）、ユーザーデータ（`sessions/` `session-log/` `data/`）、ペルソナホワイトリスト（`_template` `kyouka-detective` のみGit管理） |
+| `.gitattributes` | 改行コード統一（ソースコード LF、`.bat` CRLF、`.sh` LF） |
+| `README.md` | プロジェクト概要・Why・Quick Start・依存関係・データ保存先・免責事項 |
+| `requirements.txt` | 必須パッケージ: `fastapi uvicorn httpx pyyaml python-dotenv ruamel.yaml` |
+| `config.default.yaml` | 全セクションに日本語コメント追記（用途・指定方法・値の範囲） |
+| `.env.example` | APIキー発行元URL・Gmailアプリパスワード発行手順を明記 |
+| リポジトリ名 | `charachat` → `minichat-pchan`（GitHub上でリネーム、リモートURL自動追従） |
