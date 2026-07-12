@@ -103,6 +103,12 @@ pip install fastapi uvicorn httpx pyyaml python-dotenv
 
 ChromaDB の保存先と埋め込みモデルは `config.yaml` の `chroma` セクションで変更可能。
 
+## Disclaimer
+
+本ソフトウェアは「現状有姿」で提供され、明示・黙示を問わず一切の保証を伴いません。本ソフトウェアの使用により生じた損害・API使用料・データ消失について作者は責任を負いません。
+
+This software is provided "as is", without warranty of any kind. The author is not liable for any damages, API usage fees, or data loss arising from its use.
+
 ## Third-party Content
 
 ユーザーが作成・導入するペルソナおよびプラグインは自己責任で使用してください。悪意あるファイルによる被害について作者は責任を負いません。
