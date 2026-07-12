@@ -294,11 +294,13 @@ class PersonaStudioPlugin(PluginBase):
         """API呼び出し用の設定を受け取る。main.py の起動時に呼ばれる。"""
         self._config = config
 
-    def _make_config(self, max_tokens: int = 2000) -> dict:
-        """max_tokens を上書きした設定のコピーを返す。"""
+    def _make_config(self, max_tokens: int = 2000, timeout: int | None = None) -> dict:
+        """max_tokens / timeout を上書きした設定のコピーを返す。"""
         import copy
         c = copy.deepcopy(self._config)
         c["api"]["max_tokens"] = max_tokens
+        if timeout is not None:
+            c["api"]["timeout"] = timeout
         return c
 
     async def run(self, hook: str, data, ctx: dict):
@@ -387,7 +389,7 @@ class PersonaStudioPlugin(PluginBase):
         if not self._config:
             raise RuntimeError("persona_studio not configured")
 
-        config = self._make_config(max_tokens=16000)
+        config = self._make_config(max_tokens=16000, timeout=300)
         # 入力が長すぎるとプロンプトが膨らみ出力トークン不足になるためトリム
         trimmed = raw_text if len(raw_text) <= 6000 else raw_text[:6000]
 
