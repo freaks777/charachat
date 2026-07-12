@@ -98,7 +98,7 @@ All 8 providers are configured in `config.default.yaml`, but those without a ver
 | Provider | Interface | Status |
 |---|---|---|
 | OpenRouter | OpenAI-compatible | ✅ Verified |
-| OpenCode | OpenAI-compatible | ✅ Verified |
+| OpenCode Go | OpenAI-compatible | ✅ Verified |
 | OpenAI | OpenAI-compatible | ⚠️ Not tested (requires API key) |
 | Anthropic | Anthropic API | ⚠️ Not tested (requires API key) |
 | Google | Google API | ⚠️ Not tested (requires API key) |
