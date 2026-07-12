@@ -4,6 +4,7 @@ SOUL.md / SKILL.md / style.yaml の生成、編集、テスト会話を提供す
 hook は持たず、独立した API エンドポイント群として動作する。
 """
 
+import logging
 from pathlib import Path
 
 from core.api import chat_sync
@@ -377,8 +378,8 @@ class PersonaStudioPlugin(PluginBase):
     async def extract_fields(self, raw_text: str) -> dict:
         """自由記述テキストから CharacterData のフィールドを抽出。
 
-        LLMにSOUL.mdを書かせるのではなく、構造化JSONでフィールド値を直接返させる。
-        フォームに収まらない情報は extra_sections として保持。
+        大規模テキストでも無料枠プロバイダで完走できるよう、27フィールドを
+        3バッチに分割してLLM呼び出しを行う。
         """
         if not self._config:
             raise RuntimeError("persona_studio not configured")
@@ -386,25 +387,51 @@ class PersonaStudioPlugin(PluginBase):
         config = self._make_config(max_tokens=16000)
         # 入力が長すぎるとプロンプトが膨らみ出力トークン不足になるためトリム
         trimmed = raw_text if len(raw_text) <= 6000 else raw_text[:6000]
-        prompt = _build_extraction_prompt(trimmed)
-        messages = [{"role": "user", "content": prompt}]
-        result = await chat_sync(messages, config)
 
-        if not result or not result.strip():
-            raise ValueError("APIが空の応答を返しました。テキストが長すぎるか、モデルの制限の可能性があります。")
+        # 3バッチに分割（1バッチあたり9〜10フィールド）
+        all_fields = list(_EXTRACTION_FIELDS)
+        batch_size = 10
+        batches = [
+            all_fields[i:i + batch_size]
+            for i in range(0, len(all_fields), batch_size)
+        ]
+        logger = logging.getLogger("rp_standalone")
 
-        parsed = _parse_json_response(result)
-        fields = parsed.get("fields", {})
-        extra = parsed.get("extra_sections", [])
+        all_fields_result = {}
+        all_extra = []
 
-        # extra_sections が文字列で来た場合の防御
-        if isinstance(extra, str):
-            extra = [{"title": "", "content": extra}]
+        for bi, batch_fields in enumerate(batches):
+            prompt = _build_extraction_prompt(trimmed, batch_fields)
+            messages = [{"role": "user", "content": prompt}]
+            logger.info(
+                "extract_fields batch %d/%d: %d fields, prompt=%d chars",
+                bi + 1, len(batches), len(batch_fields), len(prompt),
+            )
+            result = await chat_sync(messages, config)
+
+            if not result or not result.strip():
+                raise ValueError(
+                    f"APIが空の応答を返しました（バッチ{bi+1}/{len(batches)}）。"
+                    "テキストが長すぎるか、モデルの制限の可能性があります。"
+                )
+
+            parsed = _parse_json_response(result)
+            fields = parsed.get("fields", {})
+            extra = parsed.get("extra_sections", [])
+
+            if isinstance(extra, str):
+                extra = [{"title": "", "content": extra}]
+
+            all_fields_result.update(fields)
+            # extra_sections は最初のバッチだけ収集（重複防止）
+            if bi == 0:
+                all_extra = extra
 
         return {
-            "fields": fields,
-            "extra_sections": extra,
-            "extraction_method": "llm",
+            "fields": all_fields_result,
+            "extra_sections": all_extra,
+            "extraction_method": "llm_batched",
+            "batches": len(batches),
         }
 
     # ── フリーテキスト変換（旧方式、非推奨） ──
@@ -519,13 +546,15 @@ def _person_label(p: str) -> str:
     return "一人称（「私は」「俺は」等）" if p == "first" else "三人称（「○○は」「彼女は」等）"
 
 
-def _build_extraction_prompt(raw_text: str) -> str:
-    """フィールド抽出用プロンプトを構築。"""
+def _build_extraction_prompt(raw_text: str, fields: list | None = None) -> str:
+    """フィールド抽出用プロンプトを構築。fields指定時はそのサブセットのみ。"""
+    if fields is None:
+        fields = _EXTRACTION_FIELDS
     descriptions = "\n".join(
-        f"- {field}: {desc}" for field, desc in _EXTRACTION_FIELDS
+        f"- {field}: {desc}" for field, desc in fields
     )
     return EXTRACT_FIELDS_PROMPT.format(
-        field_count=len(_EXTRACTION_FIELDS),
+        field_count=len(fields),
         field_descriptions=descriptions,
         raw_text=raw_text,
     )
