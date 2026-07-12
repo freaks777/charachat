@@ -175,9 +175,14 @@ async def _openai_sync(
         if (not content or not content.strip()) and msg.get("reasoning_content"):
             content = msg["reasoning_content"]
         if not content or not content.strip():
+            # デバッグ: レスポンスの全キーをログ出力
             finish = data["choices"][0].get("finish_reason", "unknown")
             logging.getLogger("rp_standalone").warning(
-                "API returned empty content. finish_reason=%s, model=%s", finish, model
+                "API empty content. finish_reason=%s, model=%s, msg_keys=%s, "
+                "reasoning_len=%d",
+                finish, model,
+                list(msg.keys()),
+                len(msg.get("reasoning_content") or ""),
             )
         return content
 

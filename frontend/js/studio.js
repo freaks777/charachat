@@ -217,7 +217,7 @@ async function extractFields() {
   setLoading(true, "抽出中...");
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 120000);  // 120秒
+    const timeout = setTimeout(() => controller.abort(), 300000);  // 300秒（バッチ3回分）
     const res = await fetch("/api/persona-studio/extract-fields", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text, persona_id: personaId }),
@@ -235,7 +235,7 @@ async function extractFields() {
     showToast("✓ フィールド抽出完了。必要に応じて編集し「フォームから生成」を押してください");
   } catch (err) {
     setLoading(false);
-    setStatus(err.name === "AbortError" ? "タイムアウト（120秒）: API応答なし" : "通信エラー: " + err, true);
+    setStatus(err.name === "AbortError" ? "タイムアウト（300秒）: API応答なし" : "通信エラー: " + err, true);
   }
 }
 
