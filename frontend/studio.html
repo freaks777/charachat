@@ -40,7 +40,10 @@
     <fieldset style="border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-bottom:12px">
       <legend style="font-size:13px;font-weight:700;color:var(--text-dim)" data-i18n="fieldsetBasic">基本情報</legend>
       <label data-i18n="fieldPersonaId">ペルソナID <span style="color:var(--error)">*必須</span></label>
-      <input id="t-persona-id" placeholder="my-character">
+      <input id="t-persona-id" placeholder="my-character"
+             pattern="[a-zA-Z0-9_-]+" maxlength="64"
+             title="半角英数字・ハイフン・アンダースコアのみ（最大64文字）">
+      <span class="validation-hint"></span>
       <label data-i18n="fieldName">名前 <span style="color:var(--error)">*必須</span></label>
       <input id="t-name" placeholder="キャラクター名">
       <div style="display:flex;gap:8px">
@@ -161,7 +164,10 @@
   <!-- ファイル指定 -->
   <div class="tab-content" id="tab-file">
     <label data-i18n="fieldPersonaId">ペルソナID</label>
-    <input id="d-persona-id" placeholder="my-character">
+    <input id="d-persona-id" placeholder="my-character"
+           pattern="[a-zA-Z0-9_-]+" maxlength="64"
+           title="半角英数字・ハイフン・アンダースコアのみ（最大64文字）">
+    <span class="validation-hint"></span>
     <label data-i18n="labelSourceDir">登録元フォルダ</label>
     <input id="d-source-dir" placeholder="../personas/my-character など">
     <p class="setting-hint" data-i18n="hintSourceDir">SOUL.md / SKILL.md / style.yaml を含むフォルダのパス。3ファイル揃っていれば即登録、不足分は自動生成します。</p>

@@ -133,7 +133,10 @@ async def _openai_stream(
                     content = delta.get("content", "")
                     if content:
                         yield content
-                except (json.JSONDecodeError, KeyError, IndexError):
+                except (json.JSONDecodeError, KeyError, IndexError) as e:
+                    logging.getLogger("rp_standalone").warning(
+                        "API chunk parse error (openai): %s", e
+                    )
                     continue
 
 
@@ -240,7 +243,10 @@ async def _anthropic_stream(
                             text = delta.get("text", "")
                             if text:
                                 yield text
-                except (json.JSONDecodeError, KeyError):
+                except (json.JSONDecodeError, KeyError) as e:
+                    logging.getLogger("rp_standalone").warning(
+                        "API chunk parse error (anthropic): %s", e
+                    )
                     continue
 
 
@@ -349,7 +355,10 @@ async def _google_stream(
                             text = part.get("text", "")
                             if text:
                                 yield text
-                except (json.JSONDecodeError, KeyError, IndexError):
+                except (json.JSONDecodeError, KeyError, IndexError) as e:
+                    logging.getLogger("rp_standalone").warning(
+                        "API chunk parse error (google): %s", e
+                    )
                     continue
 
 

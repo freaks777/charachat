@@ -57,7 +57,13 @@ function showToast(msg, isError) {
 }
 
 function escapeHtml(str) {
-  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  if (!str) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 // ── タブ切替 ──
@@ -102,6 +108,8 @@ function resetAll() {
   document.getElementById("d-source-dir").value = "";
   document.getElementById("t-persona-id").value = defaultPersonaId();
   document.getElementById("d-persona-id").value = document.getElementById("t-persona-id").value;
+  validatePersonaId(document.getElementById("t-persona-id"));
+  validatePersonaId(document.getElementById("d-persona-id"));
   document.getElementById("t-style-preset").value = "novel_ai";
   document.getElementById("t-style-custom").style.display = "none";
   document.getElementById("file-validation").style.display = "none";
@@ -492,6 +500,8 @@ async function loadDraft(personaId) {
 
     document.getElementById("t-persona-id").value = d.persona_id || "";
     document.getElementById("d-persona-id").value = d.persona_id || "";
+    validatePersonaId(document.getElementById("t-persona-id"));
+    validatePersonaId(document.getElementById("d-persona-id"));
 
     if (d.style) {
       const s = d.style;
@@ -525,6 +535,28 @@ async function deletePersona(personaId) {
   } catch (err) { setStatus("削除失敗: " + err, true); showToast("削除失敗: " + err, true); }
 }
 
+// ── バリデーション ──
+const PERSONA_ID_RE = /^[a-zA-Z0-9_-]*$/;
+
+function validatePersonaId(el) {
+  const hint = el.parentElement.querySelector(".validation-hint");
+  if (!hint) return;
+  const valid = PERSONA_ID_RE.test(el.value);
+  el.classList.toggle("invalid", !valid && el.value.length > 0);
+  hint.textContent = valid || el.value.length === 0 ? "" : "半角英数字・ハイフン・アンダースコアのみ使用可";
+  hint.classList.toggle("visible", !valid && el.value.length > 0);
+}
+
+function syncPersonaIdAndValidate(fromId, toId) {
+  const fromEl = document.getElementById(fromId);
+  const toEl = document.getElementById(toId);
+  if (fromEl && toEl) {
+    toEl.value = fromEl.value;
+    validatePersonaId(fromEl);
+    validatePersonaId(toEl);
+  }
+}
+
 // ── 初期化 ──
 document.addEventListener("DOMContentLoaded", () => {
   i18nApply();
@@ -534,12 +566,12 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("t-persona-id").value = defaultId;
   document.getElementById("d-persona-id").value = defaultId;
 
-  // t ↔ d のpersona-id同期
+  // t ↔ d のpersona-id同期（バリデーション付き）
   document.getElementById("t-persona-id").addEventListener("input", () => {
-    document.getElementById("d-persona-id").value = document.getElementById("t-persona-id").value;
+    syncPersonaIdAndValidate("t-persona-id", "d-persona-id");
   });
   document.getElementById("d-persona-id").addEventListener("input", () => {
-    document.getElementById("t-persona-id").value = document.getElementById("d-persona-id").value;
+    syncPersonaIdAndValidate("d-persona-id", "t-persona-id");
   });
 
   const testMsg = document.getElementById("test-msg");

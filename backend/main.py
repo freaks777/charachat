@@ -22,8 +22,8 @@ import traceback
 from pathlib import Path
 
 import httpx
-import yaml
 from dotenv import load_dotenv
+from pydantic import BaseModel, Field
 
 # .env 自動読込（カレントから親を遡って探索）
 def _find_dotenv() -> Path | None:
@@ -295,11 +295,23 @@ def _load_session_state() -> str:
     return "\n".join(lines)
 
 
+# 状態トラッキングの最大文字数（肥大化防止）
+MAX_STATE_LENGTH = 4096
+
+
 def _save_session_state(state: dict):
     """現在の状態を _state.json に保存（フル上書き）。"""
     sp = _state_path()
     sp.parent.mkdir(parents=True, exist_ok=True)
-    sp.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+    # LLM暴走による肥大化を防止
+    state_json = json.dumps(state, ensure_ascii=False, indent=2)
+    if len(state_json) > MAX_STATE_LENGTH:
+        logger.warning(
+            "state JSON too large (%d chars), truncating to %d",
+            len(state_json), MAX_STATE_LENGTH,
+        )
+        state_json = state_json[:MAX_STATE_LENGTH]
+    sp.write_text(state_json, encoding="utf-8")
 
 
 def _diff_state(old: dict, new: dict) -> dict:
@@ -458,6 +470,107 @@ Lv3（{threshold_labels[2]}後）: 最終通告
         return []
 
 
+# ── Pydantic リクエストモデル ────────────────────────────────────
+
+
+class ProviderRequest(BaseModel):
+    provider: str
+    model: str = ""
+    models: list[str] | None = None
+
+
+class ApiParamsRequest(BaseModel):
+    api: dict = Field(default_factory=dict)
+
+
+class WatchdogRequest(BaseModel):
+    watchdog: dict = Field(default_factory=dict)
+
+
+class SessionConfigRequest(BaseModel):
+    session: dict = Field(default_factory=dict)
+
+
+class StyleRequest(BaseModel):
+    style: dict = Field(default_factory=dict)
+
+
+class StartSessionRequest(BaseModel):
+    persona_id: str = ""
+    style_override: dict | None = None
+
+
+class ResumeSessionRequest(BaseModel):
+    session_id: str  # "persona_id/YYYY-MM-DD_HHMMSSRR"
+
+
+class UpdateMessageRequest(BaseModel):
+    index: int
+    content: str
+    persona_id: str = ""
+    session_id: str = ""
+
+
+class DeleteMessageRequest(BaseModel):
+    index: int
+    persona_id: str = ""
+    session_id: str = ""
+
+
+class TruncateRequest(BaseModel):
+    from_index: int
+    persona_id: str = ""
+    session_id: str = ""
+
+
+class EstimateStyleRequest(BaseModel):
+    soul_md_text: str
+
+
+class ExtractFieldsRequest(BaseModel):
+    text: str
+
+
+class ConvertFreetextRequest(BaseModel):
+    text: str
+    style_override: dict | None = None
+
+
+class RefineRequest(BaseModel):
+    draft: dict = Field(default_factory=dict)
+    instruction: str = ""
+
+
+class TestChatRequest(BaseModel):
+    draft: dict = Field(default_factory=dict)
+    message: str = ""
+
+
+class SavePersonaRequest(BaseModel):
+    persona_id: str = ""
+    draft: dict = Field(default_factory=dict)
+
+
+class ValidateFilesRequest(BaseModel):
+    source_dir: str = ""
+
+
+class ImportPersonaRequest(BaseModel):
+    persona_id: str = ""
+    source_dir: str = ""
+
+
+class SwitchPersonaRequest(BaseModel):
+    persona_id: str = ""
+
+
+class ChatRequest(BaseModel):
+    text: str
+    persona_id: str = ""
+    session_id: str = ""
+    resend: bool = False
+
+
 # ── REST API ─────────────────────────────────────────────────────
 
 @app.get("/api/config/model")
@@ -496,14 +609,14 @@ async def get_full_config():
 
 
 @app.post("/api/config/provider")
-async def set_provider(data: dict):
+async def set_provider(req: ProviderRequest):
     """プロバイダとモデルを切り替える（config.yaml 書き戻し）。
     models 配列が渡された場合は当該プロバイダのモデルリストも更新する。
     model が空の場合は models の先頭を active_model として使用する。
     """
-    provider = data.get("provider", "")
-    model = data.get("model", "")
-    models = data.get("models", None)
+    provider = req.provider
+    model = req.model
+    models = req.models
 
     if provider not in config.get("providers", {}):
         return {"error": f"provider '{provider}' not found"}
@@ -527,20 +640,16 @@ async def set_provider(data: dict):
         raw["providers"][provider]["models"] = models
 
     update_config_yaml(CONFIG_PATH, mutator)
-
-    # メモリ上の config も更新
-    config["active_provider"] = provider
-    config["active_model"] = model
-    config["providers"][provider]["models"] = models
+    mutator(config)  # メモリ上の config にも同じ変更を適用
 
     logger.info("config updated: provider=%s model=%s models=%d", provider, model, len(models))
     return {"status": "ok", "active_provider": provider, "active_model": model, "models": models}
 
 
 @app.post("/api/config/api")
-async def set_api_params(data: dict):
+async def set_api_params(req: ApiParamsRequest):
     """API 共通パラメータを更新。"""
-    api = data.get("api", {})
+    api = req.api
     allowed = {"max_tokens", "temperature", "timeout"}
     update = {k: v for k, v in api.items() if k in allowed}
 
@@ -548,23 +657,21 @@ async def set_api_params(data: dict):
         raw.setdefault("api", {}).update(update)
 
     update_config_yaml(CONFIG_PATH, mutator)
-
-    config["api"].update(update)
+    mutator(config)  # メモリ上の config にも同じ変更を適用
     logger.info("api params updated: %s", update)
     return {"status": "ok", "api": config["api"]}
 
 
 @app.post("/api/config/watchdog")
-async def set_watchdog(data: dict):
+async def set_watchdog(req: WatchdogRequest):
     """Watchdog 設定を更新。"""
-    watchdog = data.get("watchdog", {})
+    watchdog = req.watchdog
 
     def mutator(raw: dict):
         raw["watchdog"] = watchdog
 
     update_config_yaml(CONFIG_PATH, mutator)
-
-    config["watchdog"] = watchdog
+    mutator(config)  # メモリ上の config にも同じ変更を適用
 
     # 実行中の watchdog プラグインにも反映
     if plugin_manager.has("watchdog"):
@@ -575,9 +682,9 @@ async def set_watchdog(data: dict):
 
 
 @app.post("/api/config/session")
-async def set_session_config(data: dict):
+async def set_session_config(req: SessionConfigRequest):
     """セッション設定を更新。"""
-    session = data.get("session", {})
+    session = req.session
     allowed = {"max_tokens", "save_interval"}
     update = {k: v for k, v in session.items() if k in allowed}
 
@@ -585,8 +692,7 @@ async def set_session_config(data: dict):
         raw.setdefault("session", {}).update(update)
 
     update_config_yaml(CONFIG_PATH, mutator)
-
-    config["session"].update(update)
+    mutator(config)  # メモリ上の config にも同じ変更を適用
     logger.info("session config updated: %s", update)
     return {"status": "ok", "session": config["session"]}
 
@@ -616,9 +722,9 @@ async def reset_config():
 
 
 @app.post("/api/config/style")
-async def set_style(data: dict):
+async def set_style(req: StyleRequest):
     """グローバル文体設定を更新。"""
-    style = data.get("style", {})
+    style = req.style
     allowed = {"viewpoint", "narration", "person"}
     update = {}
     for k in allowed:
@@ -630,8 +736,7 @@ async def set_style(data: dict):
         raw.setdefault("style", {}).update(update)
 
     update_config_yaml(CONFIG_PATH, mutator)
-
-    config.setdefault("style", {}).update(update)
+    mutator(config)  # メモリ上の config にも同じ変更を適用
     logger.info("global style updated: %s", update)
     return {"status": "ok", "style": config["style"]}
 
@@ -766,8 +871,8 @@ async def delete_session(persona_id: str, date: str):
 
 
 @app.post("/api/persona/switch")
-async def switch_persona(data: dict):
-    persona_id = data.get("persona_id", "")
+async def switch_persona(req: SwitchPersonaRequest):
+    persona_id = req.persona_id
     if not persona_id:
         return {"error": "persona_id required"}
     try:
@@ -820,13 +925,13 @@ async def get_persona_style(persona_id: str):
 
 
 @app.post("/api/session/start")
-async def start_session(data: dict):
+async def start_session(req: StartSessionRequest):
     """セッションを開始し、スタイルをロックする。
 
     Body: {"persona_id": "kyouka-detective", "style_override": {...}}
     persona_id が指定された場合はペルソナを切り替える。
     """
-    persona_id = data.get("persona_id", "").strip()
+    persona_id = req.persona_id.strip()
     if persona_id:
         # persona_id のバリデーション（パストラバーサル防止、防御的）
         try:
@@ -861,7 +966,7 @@ async def start_session(data: dict):
     history._save_full()
 
     try:
-        style = persona_manager.start_session(data.get("style_override"))
+        style = persona_manager.start_session(req.style_override)
     except ValueError as e:
         return {"error": str(e)}
 
@@ -996,12 +1101,12 @@ async def _auto_resume_session(persona_id: str, session_id: str = "") -> str | N
 
 
 @app.post("/api/session/resume")
-async def resume_session(data: dict):
+async def resume_session(req: ResumeSessionRequest):
     """既存セッションを再開する。
 
     Body: {"session_id": "kyouka-detective/2026-07-06_HHMMSSRR"}
     """
-    raw_id = data.get("session_id", "").strip()
+    raw_id = req.session_id.strip()
     if not raw_id or "/" not in raw_id:
         return {"error": "invalid session_id (format: persona_id/YYYY-MM-DD_HHMMSSRR)"}
 
@@ -1058,18 +1163,15 @@ async def resume_session(data: dict):
 
 
 @app.post("/api/session/update-message")
-async def update_message(data: dict):
+async def update_message(req: UpdateMessageRequest):
     """指定インデックスのメッセージ内容を更新する。
 
     Body: {"index": 0, "content": "新しい内容", "persona_id": "...", "session_id": "..."}
     """
-    await _auto_resume_session(
-        str(data.get("persona_id", "")).strip(),
-        str(data.get("session_id", "")).strip(),
-    )
-    index = data.get("index", -1)
-    content = data.get("content", "")
-    if not isinstance(index, int) or index < 0 or index >= len(history._messages):
+    await _auto_resume_session(req.persona_id, req.session_id)
+    index = req.index
+    content = req.content
+    if index < 0 or index >= len(history._messages):
         return {"error": f"invalid index (0-{len(history._messages)-1})"}
     history.update_message(index, content)
     logger.info("message updated: index=%d", index)
@@ -1077,18 +1179,15 @@ async def update_message(data: dict):
 
 
 @app.post("/api/session/delete-message")
-async def delete_message(data: dict):
+async def delete_message(req: DeleteMessageRequest):
     """指定インデックスのメッセージを削除する。
 
     Body: {"index": 0, "persona_id": "...", "session_id": "..."}
     ユーザーメッセージ削除時は対応するアシスタント応答も削除。
     """
-    await _auto_resume_session(
-        str(data.get("persona_id", "")).strip(),
-        str(data.get("session_id", "")).strip(),
-    )
-    index = data.get("index", -1)
-    if not isinstance(index, int) or index < 0 or index >= len(history._messages):
+    await _auto_resume_session(req.persona_id, req.session_id)
+    index = req.index
+    if index < 0 or index >= len(history._messages):
         return {"error": f"invalid index (0-{len(history._messages)-1})"}
 
     msg = history._messages[index]
@@ -1109,18 +1208,15 @@ async def delete_message(data: dict):
 
 
 @app.post("/api/session/truncate")
-async def truncate_history(data: dict):
+async def truncate_history(req: TruncateRequest):
     """指定インデックス以降のメッセージをすべて削除する。
 
     Body: {"from_index": 3, "persona_id": "...", "session_id": "..."}
     from_index のメッセージ自体も削除対象。
     """
-    await _auto_resume_session(
-        str(data.get("persona_id", "")).strip(),
-        str(data.get("session_id", "")).strip(),
-    )
-    from_index = data.get("from_index", -1)
-    if not isinstance(from_index, int) or from_index < 0 or from_index >= len(history._messages):
+    await _auto_resume_session(req.persona_id, req.session_id)
+    from_index = req.from_index
+    if from_index < 0 or from_index >= len(history._messages):
         return {"error": f"invalid from_index (0-{len(history._messages)-1})"}
     deleted = len(history._messages) - from_index
     history._messages = history._messages[:from_index]
@@ -1154,11 +1250,11 @@ async def generate_opening():
 
 
 @app.post("/api/persona-studio/estimate-style")
-async def estimate_style(data: dict):
+async def estimate_style(req: EstimateStyleRequest):
     """SOUL.md テキストから文体を推定する。"""
     if not plugin_manager.has("persona_studio"):
         return {"error": "persona_studio plugin not loaded"}
-    soul_text = data.get("soul_md_text", "")
+    soul_text = req.soul_md_text
     if not soul_text:
         return {"error": "soul_md_text required"}
     try:
@@ -1183,13 +1279,13 @@ async def create_template(data: dict):
 
 
 @app.post("/api/persona-studio/extract-fields")
-async def extract_fields(data: dict):
+async def extract_fields(req: ExtractFieldsRequest):
     """自由記述テキストから CharacterData フィールドを抽出（v3.3）。"""
     if not plugin_manager.has("persona_studio"):
         return {"error": "persona_studio plugin not loaded"}
     try:
         result = await plugin_manager.get("persona_studio").extract_fields(
-            data.get("text", ""),
+            req.text,
         )
         return {"status": "ok", **result}
     except Exception as e:
@@ -1198,14 +1294,14 @@ async def extract_fields(data: dict):
 
 
 @app.post("/api/persona-studio/convert-freetext")
-async def convert_freetext(data: dict):
+async def convert_freetext(req: ConvertFreetextRequest):
     """自由記述テキストをペルソナ形式に変換。"""
     if not plugin_manager.has("persona_studio"):
         return {"error": "persona_studio plugin not loaded"}
     try:
         draft = await plugin_manager.get("persona_studio").convert_freetext(
-            data.get("text", ""),
-            data.get("style_override"),
+            req.text,
+            req.style_override,
         )
         return {"status": "ok", "draft": draft}
     except Exception as e:
@@ -1214,14 +1310,14 @@ async def convert_freetext(data: dict):
 
 
 @app.post("/api/persona-studio/refine")
-async def refine_draft(data: dict):
+async def refine_draft(req: RefineRequest):
     """ドラフトを指示に従って部分修正。"""
     if not plugin_manager.has("persona_studio"):
         return {"error": "persona_studio plugin not loaded"}
     try:
         revised = await plugin_manager.get("persona_studio").refine(
-            data.get("draft", {}),
-            data.get("instruction", ""),
+            req.draft,
+            req.instruction,
         )
         return {"status": "ok", "draft": revised}
     except Exception as e:
@@ -1230,14 +1326,14 @@ async def refine_draft(data: dict):
 
 
 @app.post("/api/persona-studio/test-chat")
-async def test_chat(data: dict):
+async def test_chat(req: TestChatRequest):
     """ドラフトのペルソナでテスト会話。"""
     if not plugin_manager.has("persona_studio"):
         return {"error": "persona_studio plugin not loaded"}
     try:
         response_text = await plugin_manager.get("persona_studio").test_chat(
-            data.get("draft", {}),
-            data.get("message", ""),
+            req.draft,
+            req.message,
         )
         return {"status": "ok", "response": response_text}
     except Exception as e:
@@ -1246,17 +1342,17 @@ async def test_chat(data: dict):
 
 
 @app.post("/api/persona-studio/save")
-async def save_persona(data: dict):
+async def save_persona(req: SavePersonaRequest):
     """ドラフトを personas/{persona_id}/ に保存。"""
     if not plugin_manager.has("persona_studio"):
         return {"error": "persona_studio plugin not loaded"}
-    persona_id = data.get("persona_id", "").strip()
+    persona_id = req.persona_id.strip()
     if not persona_id:
         return {"error": "persona_id required"}
     try:
         validate_persona_id(persona_id)
         plugin_manager.get("persona_studio").save(
-            PERSONAS_DIR, persona_id, data.get("draft", {})
+            PERSONAS_DIR, persona_id, req.draft
         )
         logger.info("persona saved: %s", persona_id)
         return {"status": "ok", "persona_id": persona_id}
@@ -1266,9 +1362,9 @@ async def save_persona(data: dict):
 
 
 @app.post("/api/persona-studio/validate-files")
-async def validate_files(data: dict):
+async def validate_files(req: ValidateFilesRequest):
     """指定フォルダ内のペルソナファイルの有無を確認する。"""
-    source_dir = data.get("source_dir", "").strip()
+    source_dir = req.source_dir.strip()
     if not source_dir:
         return {"error": "source_dir required"}
 
@@ -1284,12 +1380,12 @@ async def validate_files(data: dict):
 
 
 @app.post("/api/persona-studio/import")
-async def import_persona(data: dict):
+async def import_persona(req: ImportPersonaRequest):
     """指定フォルダからSOUL.md/SKILL.md/style.yamlを読み込んで登録する。"""
     import shutil
 
-    persona_id = data.get("persona_id", "").strip()
-    source_dir = data.get("source_dir", "").strip()
+    persona_id = req.persona_id.strip()
+    source_dir = req.source_dir.strip()
 
     if not persona_id:
         return {"error": "persona_id required"}

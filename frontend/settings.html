@@ -46,11 +46,9 @@
         <label data-i18n="labelActiveModel">アクティブモデル</label>
         <select id="model-select" onchange="onActiveModelChange()"></select>
       </div>
-      <div class="setting-row" id="provider-status">
-        <span data-i18n="currentProvider">現在: </span>
-        <strong id="current-provider"></strong>
-        <span> / </span>
-        <strong id="current-model"></strong>
+      <div class="setting-row provider-status">
+        <span><span data-i18n="currentProvider">プロバイダ</span>: <strong id="current-provider"></strong></span>
+        <span><span data-i18n="currentModel">モデル</span>: <strong id="current-model"></strong></span>
       </div>
       <button class="btn btn-primary" id="apply-provider-btn" onclick="applyProvider()" data-i18n="btnApply">適用して再接続</button>
     </section>

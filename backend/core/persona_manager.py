@@ -10,15 +10,20 @@ import yaml
 # ── バリデーション ────────────────────────────────────────────────
 
 _PERSONA_ID_RE = re.compile(r"[a-zA-Z0-9_\-]+")
+_MAX_PERSONA_ID_LEN = 64
 
 def validate_persona_id(persona_id: str) -> str:
     """persona_id が安全な文字列か検証し、パストラバーサルを防止する。
 
-    許可: 英数字、アンダースコア、ハイフン。
+    許可: 英数字、アンダースコア、ハイフン。最大64文字。
     拒否時は ValueError を送出。
     """
     if not persona_id or not _PERSONA_ID_RE.fullmatch(persona_id):
         raise ValueError(f"invalid persona_id: {persona_id!r}")
+    if len(persona_id) > _MAX_PERSONA_ID_LEN:
+        raise ValueError(
+            f"persona_id too long: {len(persona_id)} chars (max {_MAX_PERSONA_ID_LEN})"
+        )
     return persona_id
 
 
