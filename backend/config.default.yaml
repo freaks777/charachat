@@ -16,53 +16,53 @@ providers:
     base_url: https://openrouter.ai/api/v1
     api_key: ${OPENROUTER_API_KEY}
     models:
-    - nvidia/nemotron-3-ultra-550b-a55b:free
-    - google/gemma-4-31b-it:free
-    - deepseek/deepseek-v4-pro
-    - anthropic/claude-sonnet-5
+      - nvidia/nemotron-3-ultra-550b-a55b:free
+      - google/gemma-4-31b-it:free
+      - deepseek/deepseek-v4-pro
+      - anthropic/claude-sonnet-5
   openai:
     base_url: https://api.openai.com/v1
     api_key: ${OPENAI_API_KEY}
     models:
-    - gpt-5.5-pro
-    - gpt-5.4-nano
+      - gpt-5.5-pro
+      - gpt-5.4-nano
   anthropic:
     base_url: https://api.anthropic.com/v1
     api_key: ${ANTHROPIC_API_KEY}
     api_type: anthropic
     models:
-    - claude-sonnet-5
-    - claude-haiku-4-5
+      - claude-sonnet-5
+      - claude-haiku-4-5
   google:
     base_url: https://generativelanguage.googleapis.com/v1beta
     api_key: ${GOOGLE_API_KEY}
     api_type: google
     models:
-    - gemini-3.5-flash
-    - gemini-2.5-pro
+      - gemini-3.5-flash
+      - gemini-2.5-pro
   xai:
     base_url: https://api.x.ai/v1
     api_key: ${XAI_API_KEY}
     models:
-    - grok-4.3
-    - grok-4.20
+      - grok-4.3
+      - grok-4.20
   deepseek:
     base_url: https://api.deepseek.com/v1
     api_key: ${DEEPSEEK_API_KEY}
     models:
-    - deepseek-v4-pro
-    - deepseek-v4-flash
+      - deepseek-v4-pro
+      - deepseek-v4-flash
   glm:
     base_url: https://open.bigmodel.cn/api/paas/v4
     api_key: ${GLM_API_KEY}
     models:
-    - glm-5.2
-    - glm-4.7-flash
+      - glm-5.2
+      - glm-4.7-flash
   opencode-go:
     base_url: https://opencode.ai/zen/go/v1
     api_key: ${OPENCODE_API_KEY}
     models:
-    - deepseek-v4-pro
+      - deepseek-v4-pro
 
 # ── デフォルトプロバイダ・モデル ──────────────────────────────
 # 起動時に選択されるプロバイダとモデル。設定画面から切り替え可能です。
@@ -104,12 +104,12 @@ chroma:
 # persona_studio → ペルソナ作成・編集スタジオ
 plugins:
   enabled:
-  - secrets
-  - mail
-  - watchdog
-  - session_log
-  - memory
-  - persona_studio
+    - secrets
+    - mail
+    - watchdog
+    - session_log
+    - memory
+    - persona_studio
 
 # ── Watchdog（離席監視） ───────────────────────────────────────
 # ユーザーの無操作時間に応じてエスカレーション通知を行います。
@@ -121,43 +121,43 @@ watchdog:
   enabled: false
   check_interval: 60
   levels:
-  - after: 300
-    subject: 声かけ
-    body: '……返事がないね。
+    - after: 300
+      subject: 声かけ
+      body: '……返事がないね。
 
 
-      意識が遠のいているのか、それとも無視を決め込んでいるのか。
+        意識が遠のいているのか、それとも無視を決め込んでいるのか。
 
-      どちらにせよ、君の沈黙は気になるよ。
-
-
-      戻ってきたら声をかけて。
-
-      '
-  - after: 900
-    subject: 定規
-    body: 'そろそろ15分が経とうとしている。
+        どちらにせよ、君の沈黙は気になるよ。
 
 
-      君が戻らないなら、次はもう少し……直接的な方法で注意を引くことになる。
+        戻ってきたら声をかけて。
+
+        '
+    - after: 900
+      subject: 定規
+      body: 'そろそろ15分が経とうとしている。
 
 
-      これは警告だ。返事をするなら今のうちだよ。
-
-      '
-  - after: 1800
-    subject: 限界
-    body: '……30分。
+        君が戻らないなら、次はもう少し……直接的な方法で注意を引くことになる。
 
 
-      これだけ待って何もないなら、話は別だ。
+        これは警告だ。返事をするなら今のうちだよ。
 
-      手元にある道具の中で、君が一番嫌がるものを選ぶとしよう。
+        '
+    - after: 1800
+      subject: 限界
+      body: '……30分。
 
 
-      次に目を覚ました時、君はこの沈黙を後悔するかもしれないね。
+        これだけ待って何もないなら、話は別だ。
 
-      '
+        手元にある道具の中で、君が一番嫌がるものを選ぶとしよう。
+
+
+        次に目を覚ました時、君はこの沈黙を後悔するかもしれないね。
+
+        '
 
 # ── スタイル設定 ───────────────────────────────────────────────
 # デフォルトの文体（ペルソナの style.yaml で上書き可能）
