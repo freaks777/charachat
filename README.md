@@ -17,25 +17,8 @@ Many roleplay apps exist, but some limit character customization or tie users to
 - **SOUL.md + SKILL.md** — キャラクターの人格・知識をマークダウンで定義
 - **マルチペルソナ** — 複数キャラを登録・切替可能
 - **プラグイン機構** — secrets（機密情報マスク）/ memory（長期記憶）/ watchdog（離席監視）/ mail（メール通知）/ session_log 他
-- **8プロバイダ対応** — OpenRouter / OpenAI / Anthropic / Google / xAI / DeepSeek / GLM / OpenCode
+- **マルチプロバイダ** — 8プロバイダ対応（詳細は Supported Providers 参照）
 - **SPA フロントエンド** — チャット・セッション管理・ペルソナスタジオ・設定画面
-
-### Provider Status / プロバイダ検証状況
-
-`config.default.yaml` に全8プロバイダの設定が含まれているが、APIキー取得に別途契約が必要なものは**動作未検証**。
-
-All 8 providers are configured in `config.default.yaml`, but those requiring a separate subscription are **untested**.
-
-| Provider | API Type | Status |
-|---|---|---|
-| OpenRouter | openai互換 | ✅ 動作確認済み / Verified |
-| OpenCode | openai互換 | ✅ 動作確認済み / Verified |
-| OpenAI | openai互換 | ⚠️ 未検証（要契約 / needs subscription） |
-| Anthropic | anthropic | ⚠️ 未検証（要契約 / needs subscription） |
-| Google | google | ⚠️ 未検証（要契約 / needs subscription） |
-| xAI | openai互換 | ⚠️ 未検証（要契約 / needs subscription） |
-| DeepSeek | openai互換 | ⚠️ 未検証（要契約 / needs subscription） |
-| GLM | openai互換 | ⚠️ 未検証（要契約 / needs subscription） |
 
 ## Quick Start
 
@@ -105,6 +88,27 @@ pip install fastapi uvicorn httpx pyyaml python-dotenv ruamel.yaml
 |---|---|
 | `chromadb` | memory プラグイン（長期記憶・ベクトル検索） |
 | `sentence-transformers` | memory プラグイン（埋め込みモデル） |
+
+## Supported Providers / 対応プロバイダ
+
+`config.default.yaml` に全8プロバイダの設定が含まれているが、APIキーを取得していないものは**動作未検証**。
+
+All 8 providers are configured in `config.default.yaml`, but those without a verified API key are **untested**.
+
+| Provider | Interface | Status |
+|---|---|---|
+| OpenRouter | OpenAI-compatible | ✅ Verified |
+| OpenCode | OpenAI-compatible | ✅ Verified |
+| OpenAI | OpenAI-compatible | ⚠️ Not tested (requires API key) |
+| Anthropic | Anthropic API | ⚠️ Not tested (requires API key) |
+| Google | Google API | ⚠️ Not tested (requires API key) |
+| xAI | OpenAI-compatible | ⚠️ Not tested (requires API key) |
+| DeepSeek | OpenAI-compatible | ⚠️ Not tested (requires API key) |
+| GLM | OpenAI-compatible | ⚠️ Not tested (requires API key) |
+
+未検証プロバイダの動作保証はありません。APIキーを設定すればコード上の対応は完了しており、動く可能性は高いですが、実際のリクエスト疎通までは確認していません。
+
+Untested providers have no guarantee of working. The code path exists and should work once an API key is set, but end-to-end request flow has not been verified.
 
 ## Data & Storage
 
