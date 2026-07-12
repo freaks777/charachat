@@ -383,7 +383,7 @@ class PersonaStudioPlugin(PluginBase):
         if not self._config:
             raise RuntimeError("persona_studio not configured")
 
-        config = self._make_config(max_tokens=16000)
+        config = self._make_config(max_tokens=4096)
         prompt = _build_extraction_prompt(raw_text)
         messages = [{"role": "user", "content": prompt}]
         result = await chat_sync(messages, config)
