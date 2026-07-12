@@ -485,8 +485,6 @@ function fillTemplateForm(soul) {
   setMatch(allText, /職業[：:]\s*(.+)/, "t-occupation");
   setMatch(allText, /^\s*-\s*\*\*職業\*\*[：:]\s*(.+)/m, "t-occupation");
   setMatch(allText, /所属[：:]\s*(.+)/, "t-occupation");
-  setMatch(allText, /年収[：:]\s*(.+)/, "t-income");
-  setMatch(allText, /生活水準[：:]\s*(.+)/, "t-income");
   setMatch(allText, /能力[：:]\s*(.+)/, "t-skills");
   setMatch(allText, /スキル[：:]\s*(.+)/, "t-skills");
 
