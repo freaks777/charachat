@@ -1,3 +1,16 @@
+# ============================================================
+# minichat-pchan 設定ファイル
+# ============================================================
+# このファイルをコピーして config.yaml を作成し、環境に合わせて編集してください。
+# config.yaml が存在しない場合は、このファイルがデフォルト値として使用されます。
+#
+# ${VAR} 形式の値は、.env ファイルの環境変数から自動的に読み込まれます。
+# ============================================================
+
+# ── LLMプロバイダ設定 ──────────────────────────────────────────
+# 各プロバイダの base_url, api_key, 利用可能モデルを定義します。
+# api_type: openai（デフォルト）/ anthropic / google
+# models: 設定画面に表示されるモデル一覧（max_tokensや価格は自動取得）
 providers:
   openrouter:
     base_url: https://openrouter.ai/api/v1
@@ -50,21 +63,45 @@ providers:
     api_key: ${OPENCODE_API_KEY}
     models:
     - deepseek-v4-pro
+
+# ── デフォルトプロバイダ・モデル ──────────────────────────────
+# 起動時に選択されるプロバイダとモデル。設定画面から切り替え可能です。
+# active_model の形式: <provider>/<model>（OpenRouter経由の場合）
 active_provider: openrouter
 active_model: deepseek/deepseek-v4-pro
+
+# ── APIパラメータ ──────────────────────────────────────────────
 api:
-  max_tokens: 2000
-  temperature: 0.8
-  timeout: 120
+  max_tokens: 2000      # 1回の応答で生成する最大トークン数（100〜100000）
+  temperature: 0.8      # 生成のランダム性（0.0=決定論的 〜 2.0=最大）
+  timeout: 120          # APIリクエストのタイムアウト（秒）
+
+# ── セッション設定 ─────────────────────────────────────────────
 session:
-  max_tokens: 32000
-  save_interval: 1
+  max_tokens: 32000     # 会話履歴として保持する最大トークン数（4000〜200000）
+  save_interval: 1      # 何ターンごとにファイル保存するか（通常は1）
+
+# ── パス設定 ───────────────────────────────────────────────────
+# personas_dir: ペルソナデータ（SOUL.md, SKILL.md）の格納ディレクトリ
+# default_persona: 起動時に選択されるペルソナID
 personas_dir: ../personas
 default_persona: kyouka-detective
+
+# ── ChromaDB（長期記憶・ベクトル検索） ─────────────────────────
+# memory プラグイン使用時に必要。大規模データのため別ドライブ推奨。
 chroma:
-  path: E:/LLM/chroma
-  embedding_model: intfloat/multilingual-e5-small
-  embedding_cache: E:/LLM/models
+  path: E:/LLM/chroma                      # ChromaDB のデータ保存先
+  embedding_model: intfloat/multilingual-e5-small  # 埋め込みモデル（HuggingFaceのモデル名）
+  embedding_cache: E:/LLM/models           # モデルのダウンロードキャッシュ先
+
+# ── プラグイン ─────────────────────────────────────────────────
+# enabled: 有効化するプラグインのリスト
+# secrets      → 機密情報（{{s: ...}}）をマスクしてAPI送信
+# mail         → メール通知（watchdogのエスカレーション用）
+# watchdog     → 離席監視・タイマー通知
+# session_log  → 会話ログのMarkdown保存
+# memory       → ChromaDBを使った長期記憶
+# persona_studio → ペルソナ作成・編集スタジオ
 plugins:
   enabled:
   - secrets
@@ -73,6 +110,13 @@ plugins:
   - session_log
   - memory
   - persona_studio
+
+# ── Watchdog（離席監視） ───────────────────────────────────────
+# ユーザーの無操作時間に応じてエスカレーション通知を行います。
+# enabled: true で有効（注: 初回は動作確認のため false 推奨）
+# check_interval: チェック間隔（秒）
+# levels: after（経過秒）→ subject（件名）→ body（本文）
+#         最大3レベルまで。GmailのSMTP認証（.envのGMAIL_*）が必須です。
 watchdog:
   enabled: false
   check_interval: 60
@@ -114,6 +158,12 @@ watchdog:
       次に目を覚ました時、君はこの沈黙を後悔するかもしれないね。
 
       '
+
+# ── スタイル設定 ───────────────────────────────────────────────
+# デフォルトの文体（ペルソナの style.yaml で上書き可能）
+# viewpoint: ai_character（AIキャラ視点）/ user_character（ユーザーキャラ視点）
+# narration: true（地の文あり）/ false（セリフのみ）
+# person: first（一人称）/ third（三人称） — narration: true 時のみ有効
 style:
   viewpoint: ai_character
   narration: true
