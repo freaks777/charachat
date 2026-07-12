@@ -19,6 +19,7 @@ import re
 import sys
 import time
 import traceback
+import asyncio
 from pathlib import Path
 
 import httpx
@@ -233,6 +234,9 @@ if plugin_manager.has("persona_studio"):
     ps = plugin_manager.get("persona_studio")
     ps.configure(config)
     logger.info("persona_studio configured")
+
+# 同時リクエストによるデータ競合を防止（複数タブ対策）
+_api_lock = asyncio.Lock()
 
 
 # ── .last-response タイムスタンプファイル ──────────────────────
