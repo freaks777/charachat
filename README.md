@@ -75,6 +75,21 @@ bash start_server.sh
 
 - Python 3.11+
 - 対応プロバイダのAPIキー
+- ChromaDB（memory プラグイン使用時のみ。`pip install chromadb`）
+
+## Data & Storage
+
+すべてファイルベース。外部DBサーバー不要。
+
+| データ | 保存先 | 形式 |
+|---|---|---|
+| 会話履歴 | `sessions/*.jsonl` | JSONL |
+| 会話ログ | `session-log/*.md` | Markdown |
+| 長期記憶 | ChromaDB（`chroma.path`） | ベクトルDB |
+| 機密情報 | `data/secrets_store.json` | JSON |
+| ペルソナ | `personas/*/` | Markdown + YAML |
+
+ChromaDB の保存先と埋め込みモデルは `config.yaml` の `chroma` セクションで変更可能。
 
 ## Third-party Content
 
