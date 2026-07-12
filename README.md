@@ -1,4 +1,4 @@
-# charachat
+# minichat-pchan
 
 AIキャラクターとチャットするアプリ。`SOUL.md` で魂を定義し、複数ペルソナを切り替えて会話できる。
 
@@ -68,8 +68,8 @@ bash start_server.sh
 - Python 3.11+
 - 対応プロバイダのAPIキー
 
-## Third-party Personas
+## Third-party Content
 
-ユーザーが作成・導入するペルソナは自己責任で使用してください。悪意あるペルソナファイルによる被害について作者は責任を負いません。
+ユーザーが作成・導入するペルソナおよびプラグインは自己責任で使用してください。悪意あるファイルによる被害について作者は責任を負いません。
 
-Third-party personas are used at your own risk. The author is not responsible for damages caused by malicious persona files.
+Third-party personas and plugins are used at your own risk. The author is not responsible for damages caused by malicious files.
