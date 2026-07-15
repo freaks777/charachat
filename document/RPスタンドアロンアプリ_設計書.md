@@ -463,11 +463,32 @@ class PluginBase(ABC):
         ...
 
     def get_ui_slot(self) -> dict | None:
-        """フロントに追加するUI要素の定義を返す。なければNone。"""
+        """構造化UI定義を返す。UI不要ならNone。"""
         return None
+
+    async def handle_ui_action(self, action: str, payload: dict, ctx) -> dict:
+        """payloadの業務検証は各プラグインが行う。"""
+        return {"status": "error", "message": "unsupported action", "data": {}}
 ```
 
-**`get_ui_slot()` の設計意図**: バックエンドからHTML文字列を送ってフロントに挿入させるのではなく、フロント側が `/api/plugins/enabled` で有効プラグイン一覧を取得し、各プラグインのUI定義に基づいて必要なコンポーネントをマウントする方式を前提とする。
+**動的プラグインUI基盤**: `get_ui_slot()` はHTML・JavaScript・CSSではなく構造化データだけを返す。初期スキーマ（version 1）は `button` のみを扱い、配置先は `chat.input_actions` と `chat.toolbar` の2スロットに限定する。定義は `PluginManager.collect_ui_definitions()` がpriority順に収集し、スロット、型、ID、action、label、disabled、未知フィールド、重複IDをallowlist方式で検証する。プラグイン単位の定義取得失敗はログに残して隔離する。
+
+```python
+{
+    "slot": "chat.input_actions",
+    "components": [{
+        "type": "button",
+        "id": "example-action",
+        "label": "実行",
+        "action": "run",
+        "disabled": False,
+    }],
+}
+```
+
+APIは `GET /api/plugins/ui` で有効な定義を返し、`POST /api/plugins/{plugin_name}/actions/{action}` で定義済みかつ有効なアクションだけを実行する。POSTは同一オリジン、16KB以下のJSON objectに限定する。コアは形式・サイズ・公開アクションを検証し、各プラグインは必須キー、値型、範囲、パス等の業務検証を担当する。応答は `{status, message, data}` に固定し、messageは500文字、JSON化したdataは64KBを上限とする。
+
+フロントの `plugin-ui.js` はDOM API、`textContent`、`addEventListener()` だけでbuttonを描画する。初期化とbutton操作の例外を隔離し、失敗時も `chat.js` の入力・送信・履歴表示へ影響させない。結果は共通フィードバック領域と `plugin-ui-result` CustomEventへ通知する。
 
 **プラグインの実行順序**: `priority` の昇順。デフォルトは100。
 
@@ -891,7 +912,7 @@ class MyPlugin(PluginBase):
     name = "my_plugin"
     hooks = ["on_user_message"]  # 必要なhookだけ列挙
 
-    def run(self, hook: str, data, ctx: dict):
+    async def run(self, hook: str, data, ctx: dict):
         if hook == "on_user_message":
             # ここに処理を書く
             return data  # 書き換えなければそのまま返す、または None
@@ -899,6 +920,10 @@ class MyPlugin(PluginBase):
 
     def get_ui_slot(self) -> dict | None:
         return None  # UI要素が不要ならNoneのまま
+
+    async def handle_ui_action(self, action: str, payload: dict, ctx) -> dict:
+        # payloadの必須キー・型・範囲等はプラグイン側で検証する
+        return {"status": "ok", "message": "完了", "data": {}}
 ```
 
 この雛形をコピーし、`name`と`hooks`を書き換えて`run()`を実装するだけで新規プラグインが追加できる構成を維持する。

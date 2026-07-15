@@ -1074,3 +1074,18 @@ DOM挿入監査で確認したF1〜F3を修正。
 
 **変更ファイル**: `backend/plugins/memory/plugin.py`, `tests/test_regressions.py`, `document/RPスタンドアロンアプリ_設計書.md`, `document/CHANGELOG.md`, `document/backlog.md`
 **確認結果**: 回帰テスト30件成功、Python構文チェック成功、既存照合・決定的ID・`upsert()`・全件重複スキップを確認、`git diff --check` 問題なし
+
+### 22.15 動的プラグインUI基盤 version 1（2026-07-16）
+
+- `get_ui_slot()` の構造化UI定義をPluginManagerで収集・検証する基盤を実装
+- 初期対応をbutton、`chat.input_actions`、`chat.toolbar` のみに限定
+- HTML・JavaScript・CSS・未知フィールドを受け付けないallowlist検証を導入
+- `GET /api/plugins/ui` と定義済みアクション専用の `POST /api/plugins/{plugin_name}/actions/{action}` を追加
+- POSTは同一オリジン、16KB以下のJSON objectに制限し、プラグイン応答も固定形式・サイズで検証
+- `PluginBase.handle_ui_action()` は既存プラグイン互換のデフォルト実装付きで追加
+- `plugin-ui.js` をチャット本体から独立させ、DOM APIのみで描画。初期化・個別操作の失敗を隔離
+- 二重初期化競合を世代番号で防ぎ、結果を共通フィードバック領域とCustomEventへ通知
+- 既存6プラグインにはUI定義を追加せず、既存🔒ボタンも現状維持
+
+**変更ファイル**: `backend/plugins/base.py`, `backend/plugins/plugin_manager.py`, `backend/main.py`, `frontend/index.html`, `frontend/js/plugin-ui.js`, `frontend/js/i18n.js`, `frontend/css/style.css`, `tests/test_regressions.py`, `document/RPスタンドアロンアプリ_設計書.md`, `document/CHANGELOG.md`, `document/backlog.md`
+**確認結果**: 回帰テスト37件成功、Python・JavaScript構文チェック成功、実ASGI応答でUI定義取得・未定義アクション・異オリジン・サイズ超過を確認、CSP禁止パターンなし、`git diff --check` 問題なし

@@ -1215,3 +1215,32 @@ input.invalid {
 .studio-test-log { flex: 1; overflow-y: auto; padding: 16px; font-size: 14px; line-height: 1.7; white-space: pre-wrap; }
 .studio-test-input-row { display: flex; gap: 8px; padding: 10px 16px; border-top: 1px solid var(--border); background: var(--surface); }
 .studio-test-message { flex: 1; resize: none; font: inherit; padding: 8px 12px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; line-height: 1.5; max-height: calc(1.5em * 3 + 16px); }
+
+/* ── Dynamic plugin UI ── */
+.plugin-ui-slot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.plugin-ui-slot:empty { display: none; }
+#plugin-slot-chat-toolbar .plugin-ui-button {
+  padding: 5px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+.plugin-ui-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.plugin-ui-feedback {
+  flex-shrink: 0;
+  padding: 6px 16px;
+  border-top: 1px solid var(--border);
+  color: var(--text-dim);
+  background: var(--surface);
+  font-size: 12px;
+}
+.plugin-ui-feedback.is-error { color: var(--error); }

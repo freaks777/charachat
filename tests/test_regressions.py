@@ -23,6 +23,8 @@ from core.config import (
 )
 from core.history import History
 from core.persona_manager import PersonaManager
+from plugins.base import PluginBase
+from plugins.plugin_manager import PluginManager
 from plugins.memory.plugin import (
     MemoryPlugin,
     deduplicate_facts,
@@ -127,6 +129,206 @@ class HttpClientLifecycleTests(unittest.IsolatedAsyncioTestCase):
             main_source.index("await plugin_manager.shutdown_all()"),
             main_source.index("await close_http_client()"),
         )
+
+
+class PluginUiTests(unittest.IsolatedAsyncioTestCase):
+    @staticmethod
+    def plugin(
+        name="demo",
+        priority=50,
+        definition=None,
+        result=None,
+        error=None,
+    ):
+        class StubPlugin(PluginBase):
+            hooks = []
+
+            def __init__(self):
+                self.name = name
+                self.priority = priority
+
+            async def run(self, hook, data, ctx):
+                return None
+
+            def get_ui_slot(self):
+                if error == "definition":
+                    raise RuntimeError("definition failed")
+                return definition
+
+            async def handle_ui_action(self, action, payload, ctx):
+                if error == "action":
+                    raise RuntimeError("action failed")
+                return result or {"status": "ok", "message": "done", "data": payload}
+
+        return StubPlugin()
+
+    @staticmethod
+    def definition(slot="chat.toolbar", components=None):
+        return {
+            "slot": slot,
+            "components": components or [{
+                "type": "button",
+                "id": "demo-button",
+                "label": "Demo",
+                "action": "run",
+                "disabled": False,
+            }],
+        }
+
+    def manager(self, plugins):
+        manager = PluginManager.__new__(PluginManager)
+        manager.plugins = sorted(plugins, key=lambda plugin: plugin.priority)
+        return manager
+
+    def test_collects_valid_definitions_in_priority_order_and_isolates_failures(self):
+        late = self.plugin("late", 80, self.definition("chat.input_actions"))
+        early = self.plugin("early", 10, self.definition())
+        no_ui = self.plugin("none", 20, None)
+        broken = self.plugin("broken", 30, self.definition(), error="definition")
+        invalid = self.plugin("invalid", 40, {"slot": "studio.actions", "components": []})
+        manager = self.manager([late, invalid, broken, no_ui, early])
+
+        with self.assertLogs("rp-standalone", level="WARNING"):
+            definitions = manager.collect_ui_definitions()
+
+        self.assertEqual([item["name"] for item in definitions], ["early", "late"])
+        self.assertEqual(
+            [item["slot"] for item in definitions],
+            ["chat.toolbar", "chat.input_actions"],
+        )
+
+    def test_rejects_unknown_fields_types_names_and_duplicate_ids(self):
+        plugin = self.plugin("demo", definition=self.definition())
+        valid = self.definition()
+        cases = [
+            {**valid, "html": "<b>x</b>"},
+            self.definition("settings.plugins"),
+            self.definition(components=[{
+                "type": "status", "id": "x", "label": "X", "action": "run",
+            }]),
+            self.definition(components=[{
+                "type": "button", "id": "bad id", "label": "X", "action": "run",
+            }]),
+            self.definition(components=[{
+                "type": "button", "id": "x", "label": "", "action": "run",
+            }]),
+            self.definition(components=[
+                {"type": "button", "id": "x", "label": "X", "action": "one"},
+                {"type": "button", "id": "x", "label": "Y", "action": "two"},
+            ]),
+        ]
+
+        for definition in cases:
+            with self.subTest(definition=definition):
+                self.assertIsNone(
+                    PluginManager._validate_ui_definition(plugin, definition)
+                )
+
+    async def test_dispatches_only_enabled_defined_actions(self):
+        plugin = self.plugin("demo", definition=self.definition())
+        manager = self.manager([plugin])
+
+        result = await manager.dispatch_ui_action("demo", "run", {"value": 1})
+
+        self.assertEqual(result, {
+            "status": "ok",
+            "message": "done",
+            "data": {"value": 1},
+        })
+        for plugin_name, action in [
+            ("missing", "run"),
+            ("demo", "missing"),
+            ("bad name", "run"),
+        ]:
+            with self.subTest(plugin=plugin_name, action=action):
+                with self.assertRaises(KeyError):
+                    await manager.dispatch_ui_action(plugin_name, action, {})
+
+    async def test_disabled_actions_and_plugin_failures_are_isolated(self):
+        disabled = self.definition(components=[{
+            "type": "button",
+            "id": "disabled",
+            "label": "Disabled",
+            "action": "run",
+            "disabled": True,
+        }])
+        manager = self.manager([self.plugin("disabled", definition=disabled)])
+        with self.assertRaises(KeyError):
+            await manager.dispatch_ui_action("disabled", "run", {})
+
+        broken = self.manager([
+            self.plugin("broken", definition=self.definition(), error="action")
+        ])
+        with self.assertLogs("rp-standalone", level="ERROR"):
+            result = await broken.dispatch_ui_action("broken", "run", {})
+        self.assertEqual(
+            result,
+            {"status": "error", "message": "plugin action failed", "data": {}},
+        )
+
+    async def test_invalid_or_oversized_plugin_responses_are_replaced(self):
+        cases = [
+            {"status": "ok", "message": "x", "data": {"bad": {1, 2}}},
+            {"status": "ok", "message": "x", "data": {"bad": float("nan")}},
+            {"status": "ok", "message": "x", "data": {"large": "x" * 70_000}},
+            {"status": "unknown", "message": "x", "data": {}},
+            "not a dict",
+        ]
+        for result in cases:
+            with self.subTest(result_type=type(result).__name__):
+                manager = self.manager([
+                    self.plugin("demo", definition=self.definition(), result=result)
+                ])
+                actual = await manager.dispatch_ui_action("demo", "run", {})
+                self.assertEqual(
+                    actual,
+                    {
+                        "status": "error",
+                        "message": "invalid plugin response",
+                        "data": {},
+                    },
+                )
+
+    async def test_default_action_handler_preserves_existing_plugin_compatibility(self):
+        class ExistingPlugin(PluginBase):
+            name = "existing"
+            hooks = []
+
+            async def run(self, hook, data, ctx):
+                return None
+
+        result = await ExistingPlugin().handle_ui_action("anything", {}, None)
+
+        self.assertEqual(
+            result,
+            {"status": "error", "message": "unsupported action", "data": {}},
+        )
+
+    def test_api_and_frontend_enforce_limits_and_dom_only_rendering(self):
+        main_source = (ROOT / "backend" / "main.py").read_text(encoding="utf-8")
+        html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "frontend" / "js" / "plugin-ui.js").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('@app.get("/api/plugins/ui")', main_source)
+        self.assertIn(
+            '@app.post("/api/plugins/{plugin_name}/actions/{action}")',
+            main_source,
+        )
+        self.assertIn("if not _same_origin(request):", main_source)
+        self.assertIn("16_384", main_source)
+        self.assertIn('data-plugin-slot="chat.toolbar"', html)
+        self.assertIn('data-plugin-slot="chat.input_actions"', html)
+        self.assertIn('src="/frontend/js/plugin-ui.js"', html)
+        self.assertIn('button.textContent = component.label', script)
+        self.assertIn('button.addEventListener("click"', script)
+        self.assertIn("slot.replaceChildren()", script)
+        self.assertIn("generation !== initGeneration", script)
+        self.assertIn("console.error", script)
+        self.assertNotIn("innerHTML", script)
+        for attribute in ("onclick=", "onchange=", "oninput=", " style="):
+            self.assertNotIn(attribute, html)
 
 
 class ConfigValidationTests(unittest.TestCase):

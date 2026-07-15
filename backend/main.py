@@ -860,7 +860,95 @@ def _same_origin(request: Request) -> bool:
     if not origin:
         return True
     parsed = urlparse(origin)
-    return parsed.netloc == request.headers.get("host", "")
+    return (
+        parsed.scheme == request.url.scheme
+        and parsed.netloc == request.headers.get("host", "")
+    )
+
+
+@app.get("/api/plugins/ui")
+async def get_plugin_ui():
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        content={
+            "version": 1,
+            "plugins": plugin_manager.collect_ui_definitions(),
+        },
+        headers=_no_store_headers(),
+    )
+
+
+@app.post("/api/plugins/{plugin_name}/actions/{action}")
+async def run_plugin_ui_action(plugin_name: str, action: str, request: Request):
+    from fastapi.responses import JSONResponse
+
+    if not _same_origin(request):
+        return JSONResponse(
+            status_code=403,
+            content={"status": "error", "message": "forbidden", "data": {}},
+            headers=_no_store_headers(),
+        )
+
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            parsed_length = int(content_length)
+            if parsed_length < 0 or parsed_length > 16_384:
+                raise ValueError
+        except ValueError:
+            return JSONResponse(
+                status_code=413,
+                content={"status": "error", "message": "payload too large", "data": {}},
+                headers=_no_store_headers(),
+            )
+
+    body = await request.body()
+    if len(body) > 16_384:
+        return JSONResponse(
+            status_code=413,
+            content={"status": "error", "message": "payload too large", "data": {}},
+            headers=_no_store_headers(),
+        )
+    try:
+        payload = json.loads(body) if body else {}
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        payload = None
+    if not isinstance(payload, dict):
+        return JSONResponse(
+            status_code=422,
+            content={"status": "error", "message": "invalid payload", "data": {}},
+            headers=_no_store_headers(),
+        )
+
+    ctx = SessionContext(
+        persona_id=persona_manager.active or "",
+        style=persona_manager.get_active_style() or {},
+        history=history,
+    )
+    try:
+        result = await plugin_manager.dispatch_ui_action(
+            plugin_name,
+            action,
+            payload,
+            ctx,
+        )
+    except KeyError:
+        return JSONResponse(
+            status_code=404,
+            content={"status": "error", "message": "plugin action not found", "data": {}},
+            headers=_no_store_headers(),
+        )
+    except ValueError:
+        return JSONResponse(
+            status_code=422,
+            content={"status": "error", "message": "invalid payload", "data": {}},
+            headers=_no_store_headers(),
+        )
+    return JSONResponse(
+        status_code=200,
+        content=result,
+        headers=_no_store_headers(),
+    )
 
 
 @app.get("/api/secrets/status")

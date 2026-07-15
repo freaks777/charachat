@@ -23,10 +23,14 @@ class PluginBase(ABC):
         ...
 
     def get_ui_slot(self) -> dict | None:
-        """フロントに追加するUI要素の定義を返す。なければ None。
-
-        戻り値はUIの「定義」（ボタン・パネル・設定項目等の構造データ）であり、
-        HTML文字列ではない。実際の表示方法はフロントエンド実装時に決定する。
-        例: {"type": "button", "id": "voice-toggle", "label": "🎤"}
-        """
+        """フロントに追加する構造化UI定義を返す。なければNone。"""
         return None
+
+    async def handle_ui_action(
+        self,
+        action: str,
+        payload: dict,
+        ctx,
+    ) -> dict:
+        """UIアクションを処理する。payloadの業務検証は各プラグインの責務。"""
+        return {"status": "error", "message": "unsupported action", "data": {}}

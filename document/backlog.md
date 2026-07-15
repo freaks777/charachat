@@ -19,7 +19,7 @@
 
 | 項目 | 詳細 | 参照 |
 |------|------|------|
-| 動的プラグインUI基盤 | `get_ui_slot()` の実運用化 | — |
+| 動的プラグインUI拡張 | status/separator、Studio/Settingsスロット、入力フォーム | UI基盤version 1 |
 
 ### 3. 設計・UI改善
 

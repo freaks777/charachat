@@ -55,6 +55,7 @@
       <span id="header-model"></span>
     </div>
     <div class="header-right">
+      <div id="plugin-slot-chat-toolbar" class="plugin-ui-slot" data-plugin-slot="chat.toolbar"></div>
       <button id="state-toggle-btn" type="button" class="is-hidden state-toggle-compact" data-i18n="btnState">状態</button>
       <span id="header-style"></span>
       <span id="header-status" class="status-dot"></span>
@@ -79,14 +80,17 @@
     </form>
   </dialog>
   <div id="input-area">
+    <div id="plugin-slot-chat-input-actions" class="plugin-ui-slot" data-plugin-slot="chat.input_actions"></div>
     <button id="secret-btn" type="button" disabled data-i18n-title="secretButtonTitle" title="機密値を挿入">🔒</button>
     <textarea id="msg-input" rows="1" data-i18n-placeholder="inputPlaceholder" placeholder="メッセージを入力..." autofocus disabled></textarea>
     <button id="send-btn" type="button" disabled data-i18n="sendButton">送信</button>
     <button id="stop-btn" type="button" class="is-hidden" data-i18n="btnStop">停止</button>
   </div>
+  <div id="plugin-ui-feedback" class="plugin-ui-feedback is-hidden" role="status" aria-live="polite"></div>
 </div>
 
 <script src="/frontend/js/i18n.js"></script>
 <script src="/frontend/js/chat.js"></script>
+<script src="/frontend/js/plugin-ui.js"></script>
 </body>
 </html>

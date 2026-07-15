@@ -1,13 +1,20 @@
 """プラグインマネージャ。hookディスパッチとプラグイン読み込み。"""
 
 import importlib
+import json
 import logging
+import re
 from pathlib import Path
 from typing import Any
 
 from plugins.base import PluginBase
 
 logger = logging.getLogger("rp-standalone")
+
+UI_SLOTS = {"chat.input_actions", "chat.toolbar"}
+UI_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
+UI_DEFINITION_FIELDS = {"slot", "components"}
+UI_COMPONENT_FIELDS = {"type", "id", "label", "action", "disabled"}
 
 
 class PluginManager:
@@ -112,6 +119,139 @@ class PluginManager:
             if p.name == name:
                 return p
         return None
+
+    @staticmethod
+    def _validate_ui_definition(plugin: PluginBase, definition) -> dict | None:
+        """プラグインUI定義をallowlist方式で検証・正規化する。"""
+        if not isinstance(definition, dict):
+            return None
+        if set(definition) != UI_DEFINITION_FIELDS:
+            return None
+        slot = definition.get("slot")
+        components = definition.get("components")
+        if slot not in UI_SLOTS or not isinstance(components, list):
+            return None
+        if not 1 <= len(components) <= 10:
+            return None
+        if not UI_NAME_RE.fullmatch(plugin.name or ""):
+            return None
+
+        normalized = []
+        ids = set()
+        for component in components:
+            if not isinstance(component, dict):
+                return None
+            if not set(component).issubset(UI_COMPONENT_FIELDS):
+                return None
+            if not {"type", "id", "label", "action"}.issubset(component):
+                return None
+            if component.get("type") != "button":
+                return None
+            component_id = component.get("id")
+            action = component.get("action")
+            label = component.get("label")
+            disabled = component.get("disabled", False)
+            if isinstance(label, str):
+                label = label.strip()
+            if (
+                not isinstance(component_id, str)
+                or not UI_NAME_RE.fullmatch(component_id)
+                or component_id in ids
+                or not isinstance(action, str)
+                or not UI_NAME_RE.fullmatch(action)
+                or not isinstance(label, str)
+                or not 1 <= len(label) <= 80
+                or not isinstance(disabled, bool)
+            ):
+                return None
+            ids.add(component_id)
+            normalized.append({
+                "type": "button",
+                "id": component_id,
+                "label": label,
+                "action": action,
+                "disabled": disabled,
+            })
+
+        return {
+            "name": plugin.name,
+            "slot": slot,
+            "components": normalized,
+        }
+
+    def collect_ui_definitions(self) -> list[dict]:
+        """有効プラグインの妥当なUI定義だけをpriority順で返す。"""
+        definitions = []
+        for plugin in self.plugins:
+            try:
+                raw = plugin.get_ui_slot()
+                if raw is None:
+                    continue
+                validated = self._validate_ui_definition(plugin, raw)
+                if validated is None:
+                    logger.warning("plugin UI definition rejected: %s", plugin.name)
+                    continue
+                definitions.append(validated)
+            except Exception:
+                logger.exception("plugin UI definition failed: %s", plugin.name)
+        return definitions
+
+    async def dispatch_ui_action(
+        self,
+        plugin_name: str,
+        action: str,
+        payload: dict,
+        ctx=None,
+    ) -> dict:
+        """UI定義で公開済みのアクションだけを対象プラグインへ委譲する。"""
+        if not UI_NAME_RE.fullmatch(plugin_name or ""):
+            raise KeyError("plugin action not found")
+        if not UI_NAME_RE.fullmatch(action or ""):
+            raise KeyError("plugin action not found")
+        if not isinstance(payload, dict):
+            raise ValueError("payload must be an object")
+
+        definition = next(
+            (item for item in self.collect_ui_definitions()
+             if item["name"] == plugin_name),
+            None,
+        )
+        allowed = {
+            component["action"]
+            for component in definition["components"]
+            if not component["disabled"]
+        } if definition else set()
+        if action not in allowed:
+            raise KeyError("plugin action not found")
+
+        plugin = self.get(plugin_name)
+        if plugin is None:
+            raise KeyError("plugin action not found")
+        try:
+            result = await plugin.handle_ui_action(action, payload, ctx)
+        except Exception:
+            logger.exception("plugin UI action failed: %s.%s", plugin_name, action)
+            return {"status": "error", "message": "plugin action failed", "data": {}}
+
+        if not isinstance(result, dict):
+            return {"status": "error", "message": "invalid plugin response", "data": {}}
+        status = result.get("status")
+        message = result.get("message", "")
+        data = result.get("data", {})
+        if (
+            status not in {"ok", "error"}
+            or not isinstance(message, str)
+            or len(message) > 500
+            or not isinstance(data, dict)
+        ):
+            return {"status": "error", "message": "invalid plugin response", "data": {}}
+        try:
+            serialized_data = json.dumps(data, ensure_ascii=False, allow_nan=False)
+        except (TypeError, ValueError):
+            return {"status": "error", "message": "invalid plugin response", "data": {}}
+        if len(serialized_data.encode("utf-8")) > 65_536:
+            return {"status": "error", "message": "invalid plugin response", "data": {}}
+        return {"status": status, "message": message, "data": data}
 
     async def dispatch(self, hook: str, data: Any, ctx=None) -> Any:
         """登録済みプラグインの hook を priority 順に呼び出す。
