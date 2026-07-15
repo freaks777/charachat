@@ -812,7 +812,9 @@ chroma:
 
 ユーザー入力、API応答、ペルソナ／セッション／設定ファイル由来の値を画面へ表示する場合は、`innerHTML` のテンプレート文字列へ連結せず、DOM APIで要素を構築して `textContent`、DOMプロパティ、`dataset` に設定する。動的なIDをインラインイベント属性へ埋め込まず、`addEventListener()` のクロージャまたはイベント委譲で処理する。
 
-F1〜F3監査で特定したファイル検証エラー、style/preset/推定結果、ペルソナ／セッションIDの表示経路はDOM構築方式へ移行済み。固定HTMLや低リスク箇所に残る `innerHTML` の削減、全インラインイベントの廃止、CSP導入は段階的に継続する。
+F1〜F3監査で特定した優先経路に加え、フロントエンドJavaScriptの `innerHTML` は全廃し、静的HTMLのインラインイベント属性とインライン `<script>` も廃止済み。イベント処理は外部JavaScriptの `addEventListener()` に統一する。
+
+CSPは `Content-Security-Policy-Report-Only` で検証を開始する。`default-src 'self'`、`script-src 'self'`、`style-src 'self'`、`connect-src 'self'` を基本とし、`object-src 'none'`、`base-uri 'none'`、`frame-ancestors 'none'` を指定する。違反は `POST /api/csp-report` で受信し、16KBを上限として重複を抑制してログへ記録する。URIはquery/fragmentを除去して機密情報のログ混入を防ぐ。Report-Only期間中は違反を遮断しないため、既存インラインstyleを計測・整理した後に強制CSPへ移行する。 2026-07-16のヘッドレスChrome実測では、5画面合計87件（Studio 73、setup 6、settings 4、chat 3、sessions 1）の `style-src-attr` 違反を確認し、それ以外のCSP違反は確認されなかった。 その後、全87件をCSS classへ移行し、再実測で違反0件を確認したため、正式な `Content-Security-Policy` として強制適用している。
 
 ### 7.4 ネットワーク・ポート設計
 

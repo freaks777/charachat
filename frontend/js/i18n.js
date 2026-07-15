@@ -367,7 +367,26 @@ function updateLangToggle() {
   const btn = document.getElementById("lang-toggle");
   if (!btn) return;
   const isJa = getLang() === "ja";
-  btn.innerHTML = isJa
-    ? '<span class="lang-active">日本語</span> / <span class="lang-inactive">English</span>'
-    : '<span class="lang-inactive">日本語</span> / <span class="lang-active">English</span>';
+  const ja = document.createElement("span");
+  const separator = document.createTextNode(" / ");
+  const en = document.createElement("span");
+  ja.className = isJa ? "lang-active" : "lang-inactive";
+  ja.textContent = "日本語";
+  en.className = isJa ? "lang-inactive" : "lang-active";
+  en.textContent = "English";
+  btn.replaceChildren(ja, separator, en);
 }
+
+document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("lang-toggle")?.addEventListener("click", toggleLang);
+  const backToTop = document.getElementById("back-to-top");
+  if (backToTop) {
+    window.addEventListener("scroll", () => {
+      backToTop.classList.toggle("visible", window.scrollY > 400);
+    });
+    backToTop.addEventListener("click", event => {
+      event.preventDefault();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  }
+});

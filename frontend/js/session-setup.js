@@ -34,28 +34,41 @@ async function loadPersonas(presetPersonaId = null) {
     renderPersonaGrid(personas);
   } catch (err) {
     console.error('loadPersonas error:', err);
-    document.getElementById('persona-grid').innerHTML =
-      '<p style="color:var(--error);padding:20px;">読み込み失敗: ' + err.message + '</p>';
+    const error = document.createElement('p');
+    error.className = 'load-error';
+    error.textContent = '読み込み失敗: ' + err.message;
+    document.getElementById('persona-grid').replaceChildren(error);
   }
 }
 
 function renderPersonaGrid(personas) {
   const grid = document.getElementById('persona-grid');
-  grid.innerHTML = personas.map(p => `
-    <div class="persona-card" data-id="${escapeHtml(p.id)}" tabindex="0">
-      <div class="persona-name">${escapeHtml(p.name)}</div>
-      <div class="persona-id">${escapeHtml(p.id)}</div>
-    </div>
-  `).join('');
+  grid.replaceChildren();
+  personas.forEach(persona => {
+    const card = document.createElement('div');
+    const name = document.createElement('div');
+    const id = document.createElement('div');
+    card.className = 'persona-card';
+    card.dataset.id = String(persona.id ?? '');
+    card.tabIndex = 0;
+    name.className = 'persona-name';
+    name.textContent = String(persona.name ?? '');
+    id.className = 'persona-id';
+    id.textContent = String(persona.id ?? '');
+    card.append(name, id);
+    grid.appendChild(card);
+  });
 
-  document.querySelectorAll('.persona-card').forEach(card => {
+  grid.querySelectorAll('.persona-card').forEach(card => {
     card.addEventListener('click', () => selectPersona(card));
-    card.addEventListener('keydown', e => {
-      if (e.key === 'Enter' || e.key === ' ') selectPersona(card);
+    card.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        selectPersona(card);
+      }
     });
   });
 }
-
 function selectPersona(card) {
   document.querySelectorAll('.persona-card').forEach(c => c.classList.remove('selected'));
   card.classList.add('selected');

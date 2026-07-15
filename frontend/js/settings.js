@@ -18,6 +18,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   try {
     i18nApply();
     updateLangToggle();
+    document.getElementById('provider-select').addEventListener('change', onProviderChange);
+    document.getElementById('model-textarea').addEventListener('input', onModelTextareaChange);
+    document.getElementById('model-select').addEventListener('change', onActiveModelChange);
+    document.getElementById('apply-provider-btn').addEventListener('click', applyProvider);
+    document.getElementById('apply-api-btn').addEventListener('click', applyApiParams);
+    document.getElementById('apply-watchdog-btn').addEventListener('click', applyWatchdog);
+    document.getElementById('global-narration').addEventListener('change', updateGlobalPersonToggle);
+    document.getElementById('apply-style-btn').addEventListener('click', applyGlobalStyle);
+    document.getElementById('apply-session-btn').addEventListener('click', applySessionSettings);
+    document.getElementById('system-prompt-textarea').addEventListener('input', onSystemPromptInput);
+    document.getElementById('apply-system-prompt-btn').addEventListener('click', applySystemPrompt);
+    document.getElementById('reset-all-settings-btn').addEventListener('click', resetAllSettings);
 
     // タブ切替
     document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -67,7 +79,7 @@ async function loadConfig() {
 
 function populateProviderSelect() {
   const select = document.getElementById('provider-select');
-  select.innerHTML = '';
+  select.replaceChildren();
   // プレースホルダ
   const ph = document.createElement('option');
   ph.value = '';
@@ -122,7 +134,7 @@ function syncModelsFromTextarea() {
   const lines = textarea.value.split('\n').map(s => s.trim()).filter(s => s);
   const currentActive = currentConfig.active_model;
 
-  modelSelect.innerHTML = '';
+  modelSelect.replaceChildren();
   lines.forEach(m => {
     const opt = document.createElement('option');
     opt.value = m;
@@ -198,29 +210,19 @@ function populateWatchdogLevels() {
   const container = document.getElementById('escalation-levels');
   const watchdog = currentConfig.watchdog || { levels: [] };
   const levels = watchdog.levels || [];
-
   document.getElementById('watchdog-enabled').checked = watchdog.enabled !== false;
   document.getElementById('watchdog-interval').value = watchdog.check_interval || 30;
-
-  container.innerHTML = levels.map((lv, i) => `
-    <div class="escalation-level">
-      <h4>${t('levelLabel', {n: i+1})} (${lv.after}秒後)</h4>
-      <div class="setting-row">
-        <label>${t('labelAfter')}</label>
-        <input type="number" class="level-after" value="${lv.after}" min="10" max="86400" step="10">
-      </div>
-      <div class="setting-row">
-        <label>${t('labelSubject')}</label>
-        <input type="text" class="level-subject" value="${escapeHtml(lv.subject)}">
-      </div>
-      <div class="setting-row">
-        <label>${t('labelBody')}</label>
-        <textarea class="level-body" rows="3">${escapeHtml(lv.body)}</textarea>
-      </div>
-    </div>
-  `).join('');
+  container.replaceChildren();
+  levels.forEach((level, index) => {
+    const section = document.createElement('div'); const heading = document.createElement('h4');
+    section.className = 'escalation-level'; heading.textContent = `${t('levelLabel', {n: index + 1})} (${level.after}秒後)`; section.appendChild(heading);
+    const addRow = (labelText, control) => { const row = document.createElement('div'); const label = document.createElement('label'); row.className = 'setting-row'; label.textContent = labelText; row.append(label, control); section.appendChild(row); };
+    const after = document.createElement('input'); after.type = 'number'; after.className = 'level-after'; after.value = level.after; after.min = '10'; after.max = '86400'; after.step = '10';
+    const subject = document.createElement('input'); subject.type = 'text'; subject.className = 'level-subject'; subject.value = level.subject || '';
+    const body = document.createElement('textarea'); body.className = 'level-body'; body.rows = 3; body.value = level.body || '';
+    addRow(t('labelAfter'), after); addRow(t('labelSubject'), subject); addRow(t('labelBody'), body); container.appendChild(section);
+  });
 }
-
 async function applyWatchdog() {
   const levels = [];
   document.querySelectorAll('.escalation-level').forEach(el => {
@@ -704,7 +706,7 @@ function loadExtractionChain() {
 
     const cfg = currentConfig || {};
     const chain = (cfg.extraction && cfg.extraction.fallback_chain) || [];
-    list.innerHTML = '';
+    list.replaceChildren();
 
     if (chain.length === 0) {
       renderChainEntry(list, 0, { provider: '', model: '' });
@@ -719,76 +721,19 @@ function loadExtractionChain() {
 
 function renderChainEntry(list, index, entry) {
   try {
-    const div = document.createElement('div');
-    div.className = 'chain-entry';
-    div.setAttribute('data-index', index);
-
-    const cfg = currentConfig || {};
-    const providers = cfg.providers || {};
-    const providerIds = Object.keys(providers);
-    const providerOptions = providerIds.map(pid =>
-      `<option value="${escapeHtml(pid)}" ${pid === entry.provider ? 'selected' : ''}>${escapeHtml(pid)}</option>`
-    ).join('');
-
-    const models = entry.provider && providers[entry.provider]
-      ? (providers[entry.provider].models || [])
-      : [];
-    const modelOptions = models.map(m =>
-      `<option value="${escapeHtml(m)}" ${m === entry.model ? 'selected' : ''}>${escapeHtml(m)}</option>`
-    ).join('');
-
-    div.innerHTML = `
-      <div class="chain-entry-header">
-        <span class="chain-priority">${t('chainPriority', {n: index + 1})}</span>
-        <button class="chain-remove-btn" title="${t('chainRemove')}" style="display:none;">×</button>
-      </div>
-      <div class="chain-entry-body">
-        <div class="chain-field">
-          <label>${t('labelProvider')}</label>
-          <select data-chain-provider="${index}">
-            <option value="">${t('chainSelectProvider')}</option>
-            ${providerOptions}
-          </select>
-        </div>
-        <div class="chain-field">
-          <label>${t('labelModel')}</label>
-          <select data-chain-model="${index}">
-            <option value="">--</option>
-            ${modelOptions}
-          </select>
-        </div>
-      </div>
-    `;
-
-    // provider変更イベント
-    const providerSel = div.querySelector(`[data-chain-provider="${index}"]`);
-    if (providerSel) {
-      providerSel.addEventListener('change', () => onChainProviderChange(index));
-    }
-
-    // 削除ボタンイベント
-    const removeBtn = div.querySelector('.chain-remove-btn');
-    if (removeBtn) {
-      removeBtn.addEventListener('click', () => removeChainEntry(index));
-    }
-
-    // カスタムモデル名対応
-    const modelSelect = div.querySelector(`[data-chain-model="${index}"]`);
-    if (entry.model && !models.includes(entry.model) && modelSelect) {
-      const opt = document.createElement('option');
-      opt.value = entry.model;
-      opt.textContent = entry.model + ' (custom)';
-      opt.selected = true;
-      modelSelect.appendChild(opt);
-    }
-
-    list.appendChild(div);
-  } catch (e) {
-    console.error('renderChainEntry error:', e, {index, entry});
-    showToast('チェーン描画エラー: ' + (e.message || e), true);
-  }
+    const div = document.createElement('div'); const header = document.createElement('div'); const priority = document.createElement('span'); const removeBtn = document.createElement('button'); const body = document.createElement('div');
+    div.className = 'chain-entry'; div.dataset.index = String(index); header.className = 'chain-entry-header'; priority.className = 'chain-priority'; priority.textContent = t('chainPriority', {n: index + 1});
+    removeBtn.className = 'chain-remove-btn'; removeBtn.title = t('chainRemove'); removeBtn.textContent = '×'; removeBtn.hidden = true; removeBtn.addEventListener('click', () => removeChainEntry(index)); header.append(priority, removeBtn); body.className = 'chain-entry-body';
+    const providers = (currentConfig && currentConfig.providers) || {}; const providerSelect = document.createElement('select'); providerSelect.dataset.chainProvider = String(index);
+    const providerPlaceholder = document.createElement('option'); providerPlaceholder.value = ''; providerPlaceholder.textContent = t('chainSelectProvider'); providerSelect.appendChild(providerPlaceholder);
+    Object.keys(providers).forEach(providerId => { const option = document.createElement('option'); option.value = providerId; option.textContent = providerId; option.selected = providerId === entry.provider; providerSelect.appendChild(option); }); providerSelect.addEventListener('change', () => onChainProviderChange(index));
+    const models = entry.provider && providers[entry.provider] ? (providers[entry.provider].models || []) : []; const modelSelect = document.createElement('select'); modelSelect.dataset.chainModel = String(index); const modelPlaceholder = document.createElement('option'); modelPlaceholder.value = ''; modelPlaceholder.textContent = '--'; modelSelect.appendChild(modelPlaceholder);
+    models.forEach(model => { const option = document.createElement('option'); option.value = model; option.textContent = model; option.selected = model === entry.model; modelSelect.appendChild(option); });
+    if (entry.model && !models.includes(entry.model)) { const option = document.createElement('option'); option.value = entry.model; option.textContent = entry.model + ' (custom)'; option.selected = true; modelSelect.appendChild(option); }
+    const addField = (labelText, select) => { const field = document.createElement('div'); const label = document.createElement('label'); field.className = 'chain-field'; label.textContent = labelText; field.append(label, select); body.appendChild(field); };
+    addField(t('labelProvider'), providerSelect); addField(t('labelModel'), modelSelect); div.append(header, body); list.appendChild(div);
+  } catch (e) { console.error('renderChainEntry error:', e, {index, entry}); showToast('チェーン描画エラー: ' + (e.message || e), true); }
 }
-
 function onChainProviderChange(index) {
   const providerSelect = document.querySelector(`[data-chain-provider="${index}"]`);
   const modelSelect = document.querySelector(`[data-chain-model="${index}"]`);
@@ -798,7 +743,11 @@ function onChainProviderChange(index) {
   const providers = (currentConfig && currentConfig.providers) || {};
   const models = providerId && providers[providerId] ? (providers[providerId].models || []) : [];
 
-  modelSelect.innerHTML = '<option value="">--</option>';
+  modelSelect.replaceChildren();
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = '--';
+  modelSelect.appendChild(placeholder);
   models.forEach(m => {
     const opt = document.createElement('option');
     opt.value = m;
@@ -833,7 +782,7 @@ function removeChainEntry(index) {
     return;
   }
   // 全再構築でインデックスを振り直す
-  list.innerHTML = '';
+  list.replaceChildren();
   const chain = collectChainData();
   chain.splice(index, 1);
   chain.forEach((entry, i) => renderChainEntry(list, i, entry));
@@ -846,7 +795,7 @@ function updateRemoveButtons() {
   const entries = list.querySelectorAll('.chain-entry');
   entries.forEach(el => {
     const btn = el.querySelector('.chain-remove-btn');
-    if (btn) btn.style.display = entries.length > 1 ? 'inline-block' : 'none';
+    if (btn) btn.hidden = entries.length <= 1;
   });
 }
 

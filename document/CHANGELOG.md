@@ -999,3 +999,44 @@ DOM挿入監査で確認したF1〜F3を修正。
 **変更ファイル**: `frontend/js/chat.js`, `session-setup.js`, `sessions.js`, `settings.js`, `studio.js`, `frontend/css/style.css`, `tests/test_regressions.py`
 
 **確認結果**: 回帰テスト17件成功、JavaScript構文チェック5ファイル成功、`git diff --check` 問題なし
+### 22.9 `innerHTML`・インラインイベントの全廃（2026-07-16）
+
+- フロントエンドJavaScriptに残っていた `innerHTML` をDOM API（`replaceChildren()`、`textContent`、DOMプロパティ）へ移行
+- HTMLの `onclick` / `onchange` / `oninput` を廃止し、外部JavaScriptの `addEventListener()` へ統一
+- セッション・設定・Studioの「トップへ戻る」インラインscriptを共通処理へ統合
+- 設定画面のフォールバックチェーン、Studio自由設定、チャット状態表示等をDOM構築化
+- 残存を防ぐ回帰テストを追加し、旧HTML文字列方式を前提としたテストを更新
+
+**変更ファイル**: `frontend/*.html`, `frontend/js/*.js`, `frontend/css/style.css`, `tests/test_regressions.py`
+
+**確認結果**: 回帰テスト18件成功、JavaScript構文チェック6ファイル成功、対象パターン残存0件、`git diff --check` 問題なし
+
+**残タスク**: CSPのreport-only検証・正式適用、既存インラインstyleの整理
+### 22.10 CSP Report-Only導入（2026-07-16）
+
+- 全HTTP応答へ `Content-Security-Policy-Report-Only` を付与
+- `script-src 'self'`、`style-src 'self'`、`connect-src 'self'` 等の自己オリジン制限を設定
+- `object-src 'none'`、`base-uri 'none'`、`frame-ancestors 'none'` を設定
+- `POST /api/csp-report` を追加し、違反内容を重複抑制してログへ記録
+- レポート本文を16KBに制限し、URIのquery/fragmentをログへ残さない方式にした
+- Report-Onlyのため現段階では画面動作を遮断せず、既存インラインstyleを検出可能
+
+**変更ファイル**: `backend/main.py`, `tests/test_regressions.py`
+
+**確認結果**: 回帰テスト19件成功、Python構文チェック成功、実ASGI応答でヘッダー付与・204受信・413サイズ制限・query除去を確認、`git diff --check` 問題なし
+
+**実測結果**: ヘッドレスChromeで `/sessions`、`/setup`、`/chat`、`/settings`、`/studio` を巡回。`style-src-attr` 87件（Studio 73、setup 6、settings 4、chat 3、sessions 1）を確認し、HTMLの `style=` 87件と一致。script・connect等の違反は0件。
+
+**残タスク**: インラインstyle 87件のCSS class移行、CSP正式適用
+### 22.11 インラインstyle全廃・CSP正式適用（2026-07-16）
+
+- HTML 5画面のインライン `style=` 87件（33種類）を共通・用途別CSS classへ移行
+- Studio 73件、setup 6件、settings 4件、chat 3件、sessions 1件をすべて除去
+- インラインstyle再混入防止の回帰テストを追加
+- ヘッドレスChromeで全5画面を再巡回し、CSP違反0件を確認
+- `Content-Security-Policy-Report-Only` から正式な `Content-Security-Policy` へ切替
+- 違反収集APIは正式適用後の監視用として継続
+
+**変更ファイル**: `frontend/*.html`, `frontend/css/style.css`, `backend/main.py`, `tests/test_regressions.py`
+
+**確認結果**: 回帰テスト19件成功、JavaScript構文チェック6ファイル成功、HTMLの `style=` 0件、CSP再実測0件、`git diff --check` 問題なし

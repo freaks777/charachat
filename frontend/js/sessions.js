@@ -193,6 +193,9 @@ document.addEventListener('DOMContentLoaded', () => {
   updateLangToggle();
   updateSortButtons();
   i18nApply();
+  document.querySelectorAll('.sort-btn').forEach(btn => {
+    btn.addEventListener('click', () => setSort(btn.dataset.sort));
+  });
 
   // 新規作成ボタン
   const newBtn = document.getElementById('new-session-btn');

@@ -77,12 +77,12 @@ class ConfigValidationTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     validate()
 
-    def test_persona_id_is_escaped_in_html_attribute(self):
+    def test_persona_id_uses_dataset_property(self):
         source = (ROOT / "frontend" / "js" / "session-setup.js").read_text(
             encoding="utf-8"
         )
-        self.assertIn('data-id="${escapeHtml(p.id)}"', source)
-        self.assertNotIn('data-id="${p.id}"', source)
+        self.assertIn("card.dataset.id = String(persona.id ?? '')", source)
+        self.assertNotIn('data-id="${', source)
 
 
 class HistoryTests(unittest.TestCase):
@@ -286,6 +286,39 @@ class FrontendXssTests(unittest.TestCase):
         self.assertIn("error.textContent = String(data.error)", studio)
         self.assertNotIn('onclick="${onClick}', studio)
         self.assertIn('card.addEventListener("click", loadPersona)', studio)
+
+    def test_frontend_avoids_inner_html_and_inline_script_handlers(self):
+        frontend = ROOT / "frontend"
+        js_source = "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in (frontend / "js").glob("*.js")
+        )
+        html_sources = {
+            path.name: path.read_text(encoding="utf-8")
+            for path in frontend.glob("*.html")
+        }
+
+        self.assertNotIn(".innerHTML", js_source)
+        for source in html_sources.values():
+            for attribute in ("onclick=", "ondblclick=", "onchange=", "oninput="):
+                self.assertNotIn(attribute, source)
+            self.assertNotIn("<script>", source)
+            self.assertNotIn(' style=', source)
+
+class CspPolicyTests(unittest.TestCase):
+    def test_enforced_policy_and_report_endpoint_are_configured(self):
+        source = (ROOT / "backend" / "main.py").read_text(encoding="utf-8")
+
+        self.assertIn('response.headers["Content-Security-Policy"]', source)
+        self.assertIn('"script-src \'self\'; "', source)
+        self.assertIn('"style-src \'self\'; "', source)
+        self.assertNotIn('"style-src \'self\' \'unsafe-inline\'; "', source)
+        self.assertIn('"report-uri /api/csp-report"', source)
+        self.assertIn('@app.post("/api/csp-report", status_code=204)', source)
+        self.assertIn('int(content_length) > 16_384', source)
+        self.assertIn('len(body) > 16_384', source)
+        self.assertIn('parsed.path[:512]', source)
+
 
 class WatchdogTests(unittest.IsolatedAsyncioTestCase):
     async def test_session_end_does_not_permanently_stop_monitor(self):

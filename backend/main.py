@@ -48,7 +48,7 @@ else:
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from core.config import (
@@ -178,6 +178,78 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="RP Standalone", lifespan=lifespan)
+
+CSP_POLICY = (
+    "default-src 'self'; "
+    "script-src 'self'; "
+    "style-src 'self'; "
+    "img-src 'self' data:; "
+    "connect-src 'self'; "
+    "font-src 'self'; "
+    "object-src 'none'; "
+    "base-uri 'none'; "
+    "form-action 'self'; "
+    "frame-ancestors 'none'; "
+    "report-uri /api/csp-report"
+)
+_CSP_REPORT_LIMIT = 500
+_csp_report_seen: set[tuple[str, str, str, int]] = set()
+
+
+@app.middleware("http")
+async def add_csp_header(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["Content-Security-Policy"] = CSP_POLICY
+    return response
+
+
+def _csp_safe_uri(value: object) -> str:
+    """CSPレポートのURIからquery/fragmentを除き、ログ長を制限する。"""
+    raw = str(value or "")
+    if raw in {"inline", "eval"}:
+        return raw
+    parsed = urlparse(raw)
+    if parsed.scheme and parsed.netloc:
+        return f"{parsed.scheme}://{parsed.netloc}{parsed.path}"[:512]
+    return parsed.path[:512]
+
+
+@app.post("/api/csp-report", status_code=204)
+async def receive_csp_report(request: Request):
+    content_length = request.headers.get("content-length")
+    if content_length and content_length.isdigit() and int(content_length) > 16_384:
+        return Response(status_code=413)
+    body = await request.body()
+    if len(body) > 16_384:
+        return Response(status_code=413)
+    try:
+        payload = json.loads(body)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return Response(status_code=204)
+    if not isinstance(payload, dict):
+        return Response(status_code=204)
+    report = payload.get("csp-report", payload)
+    if not isinstance(report, dict):
+        return Response(status_code=204)
+
+    directive = str(report.get("effective-directive") or report.get("violated-directive") or "")[:128]
+    blocked = _csp_safe_uri(report.get("blocked-uri"))
+    source = _csp_safe_uri(report.get("source-file"))
+    try:
+        line = int(report.get("line-number") or 0)
+    except (TypeError, ValueError):
+        line = 0
+    key = (directive, blocked, source, line)
+    if key not in _csp_report_seen and len(_csp_report_seen) < _CSP_REPORT_LIMIT:
+        _csp_report_seen.add(key)
+        logger.warning(
+            "CSP violation: directive=%s blocked=%s source=%s line=%d",
+            directive,
+            blocked,
+            source,
+            line,
+        )
+    return Response(status_code=204)
 
 # ── 設定読込 ────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent

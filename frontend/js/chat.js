@@ -157,6 +157,8 @@ async function init() {
 document.addEventListener("DOMContentLoaded", () => {
   updateLangToggle();
   i18nApply();
+  document.getElementById("state-toggle-btn")?.addEventListener("click", toggleStatePanel);
+  document.getElementById("stop-btn")?.addEventListener("click", cancelChat);
 
   // 旧来のスタイル選択パネル用（セッション未開始で /chat に直接来た場合のフォールバック）
   const startBtn = document.getElementById("start-btn");
@@ -231,33 +233,33 @@ function updateStatePanel(state) {
   currentState = state || {};
   const content = document.getElementById("state-content");
   const entries = Object.entries(currentState);
+  content.replaceChildren();
   if (entries.length === 0) {
-    content.innerHTML = '<span style="color:var(--text-dim)">' + (t("stateEmpty") || "変化なし") + '</span>';
+    const empty = document.createElement("span");
+    empty.className = "text-muted";
+    empty.textContent = t("stateEmpty") || "変化なし";
+    content.appendChild(empty);
   } else {
-    const colors = {
-      new: "#22c55e",
-      changed: "#eab308",
-      deleted: "#ef4444",
-    };
-    content.innerHTML = entries.map(([k, v]) => {
-      const isDiff = typeof v === "object" && v !== null && "status" in v;
-      const val = isDiff ? v.value : v;
-      const status = isDiff ? v.status : null;
-      const color = status ? (colors[status] || "var(--text-dim)") : "var(--text-dim)";
-      const deco = status === "deleted" ? "text-decoration:line-through;" : "";
-      return `<div style="margin-bottom:2px;color:${color};${deco}">${escapeHtml(k)}: ${escapeHtml(val)}</div>`;
-    }).join("");
+    entries.forEach(([key, item]) => {
+      const isDiff = typeof item === "object" && item !== null && "status" in item;
+      const value = isDiff ? item.value : item;
+      const status = isDiff ? item.status : null;
+      const row = document.createElement("div");
+      row.className = "state-entry";
+      if (["new", "changed", "deleted"].includes(status)) row.classList.add(`state-${status}`);
+      row.textContent = `${String(key)}: ${String(value ?? "")}`;
+      content.appendChild(row);
+    });
   }
   document.getElementById("state-toggle-btn").style.display = "inline-block";
 }
-
 async function loadHistory() {
   try {
     const params = new URLSearchParams({ persona_id: activePersonaId, session_id: activeSessionId });
     const res = await fetch("/api/session/history?" + params);
     const data = await res.json();
     messageIndex = 0;
-    document.getElementById("log").innerHTML = "";
+    document.getElementById("log").replaceChildren();
     (data.messages || []).forEach((m, i) => {
       addMessage(m.role, m.content, false, messageIndex++);
     });

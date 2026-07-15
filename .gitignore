@@ -1,4 +1,9 @@
 .test-tmp/
+
+# Local AI agent settings
+/.codex/
+/.agents/
+
 # Python
 __pycache__/
 *.py[cod]

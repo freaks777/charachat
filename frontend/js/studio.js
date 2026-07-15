@@ -357,15 +357,23 @@ function addExtraSection(title, content) {
   content = content || "";
   const container = document.getElementById("extra-sections-list");
   const div = document.createElement("div");
+  const titleInput = document.createElement("input");
+  const contentInput = document.createElement("textarea");
+  const removeButton = document.createElement("button");
   div.className = "extra-section-item";
-  div.style.cssText = "margin-bottom:8px;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:4px";
-  div.innerHTML =
-    `<input class="extra-title" value="${escapeHtml(title)}" placeholder="タイトル（任意）" style="width:100%;margin-bottom:4px;font-size:13px">` +
-    `<textarea class="extra-content" placeholder="内容" style="width:100%;min-height:60px;font-size:13px;resize:vertical">${escapeHtml(content)}</textarea>` +
-    `<button type="button" class="btn btn-danger btn-sm" onclick="removeExtraSection(this)" style="margin-top:4px">× 削除</button>`;
+  titleInput.className = "extra-title";
+  titleInput.value = title;
+  titleInput.placeholder = "タイトル（任意）";
+  contentInput.className = "extra-content";
+  contentInput.value = content;
+  contentInput.placeholder = "内容";
+  removeButton.type = "button";
+  removeButton.className = "btn btn-danger btn-sm extra-section-remove";
+  removeButton.textContent = "× 削除";
+  removeButton.addEventListener("click", () => div.remove());
+  div.append(titleInput, contentInput, removeButton);
   container.appendChild(div);
 }
-
 function removeExtraSection(btn) {
   btn.closest(".extra-section-item").remove();
 }
@@ -383,7 +391,7 @@ function getExtraSections() {
 
 function setExtraSections(data) {
   const container = document.getElementById("extra-sections-list");
-  container.innerHTML = "";
+  container.replaceChildren();
   if (Array.isArray(data)) {
     data.forEach(s => addExtraSection(s.title || "", s.content || ""));
   }
@@ -844,6 +852,25 @@ function syncPersonaIdAndValidate(fromId, toId) {
 document.addEventListener("DOMContentLoaded", () => {
   i18nApply();
   updateLangToggle();
+  document.querySelectorAll('[data-studio-tab]').forEach(button => {
+    button.addEventListener('click', () => switchTab(button.dataset.studioTab));
+  });
+  document.getElementById('studio-reset-all').addEventListener('click', resetAll);
+  document.getElementById('studio-toggle-test').addEventListener('click', toggleTestChat);
+  document.getElementById('studio-save-draft').addEventListener('click', saveDraft);
+  document.getElementById('t-style-preset').addEventListener('change', onStyleChange);
+  document.getElementById('studio-extract-fields').addEventListener('click', extractFields);
+  document.getElementById('studio-add-section').addEventListener('click', () => addExtraSection());
+  document.getElementById('studio-generate').addEventListener('click', generateFromTemplate);
+  document.getElementById('studio-reset-form').addEventListener('click', () => resetForm('t'));
+  document.getElementById('studio-save-form-draft').addEventListener('click', saveFormDraft);
+  document.getElementById('studio-validate-files').addEventListener('click', validateFiles);
+  document.getElementById('studio-import').addEventListener('click', importPersona);
+  document.getElementById('result-tab-soul').addEventListener('click', () => switchResultTab('soul'));
+  document.getElementById('result-tab-skill').addEventListener('click', () => switchResultTab('skill'));
+  document.getElementById('studio-close-test').addEventListener('click', toggleTestChat);
+  document.getElementById('studio-send-test').addEventListener('click', doTestChat);
+  document.getElementById('studio-cancel-op').addEventListener('click', cancelStudioOp);
 
   const defaultId = defaultPersonaId();
   document.getElementById("t-persona-id").value = defaultId;

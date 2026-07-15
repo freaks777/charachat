@@ -13,7 +13,7 @@
   <a href="/studio" data-i18n="navStudio">Studio</a>
   <a href="/settings" data-i18n="navSettings">設定</a>
   <span class="nav-spacer"></span>
-  <button id="lang-toggle" onclick="toggleLang()">EN</button>
+  <button id="lang-toggle">EN</button>
 </nav>
 
 <div id="setup-ui">
@@ -29,7 +29,7 @@
     <h1 data-i18n="customStyleTitle">文体設定</h1>
     <p class="step-sub"><span id="selected-persona-name"></span></p>
     <div id="style-preset-list"></div>
-    <div id="custom-style-opts" style="display:none;margin-top:16px">
+    <div id="custom-style-opts" class="is-hidden setup-custom-options">
       <div class="setting-row">
         <label data-i18n="customViewpoint">語り手</label>
         <select id="setup-viewpoint">
@@ -52,13 +52,13 @@
         </select>
       </div>
     </div>
-    <div style="margin-top:20px">
-      <label data-i18n="memoryScope" style="display:block;margin-bottom:4px">記憶スコープ</label>
-      <select id="memory-scope" style="width:100%">
+    <div class="u-margin-top-20">
+      <label data-i18n="memoryScope" class="setup-block-label">記憶スコープ</label>
+      <select id="memory-scope" class="u-width-full">
         <option value="session" data-i18n-value="optMemorySession">このセッションのみ</option>
         <option value="persona" data-i18n-value="optMemoryPersona">全セッション共通</option>
       </select>
-      <div class="setting-hint" data-i18n="hintMemoryScope" style="font-size:12px;color:var(--text-dim);margin-top:4px">
+      <div class="setting-hint setup-memory-hint" data-i18n="hintMemoryScope">
         このセッションのみ：会話の記憶を他のセッションと共有しません。全セッション共通：同一キャラの全セッションで記憶を共有します。
       </div>
     </div>
@@ -67,7 +67,7 @@
       <button class="btn btn-primary" id="start-session-btn" data-i18n="styleStart">セッション開始</button>
     </div>
   </div>
-  <div class="overlay" id="loading-overlay" style="display:none">
+  <div class="overlay is-hidden" id="loading-overlay">
     <div class="spinner"></div>
     <span data-i18n="loadingText">読み込み中...</span>
   </div>

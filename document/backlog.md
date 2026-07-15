@@ -7,13 +7,13 @@
 
 ## 優先度順タスク（2026-07-16 更新）
 
-### 1. CSP/XSS 監査と対策（5段階）
+### 1. CSP/XSS 監査と対策（完了）
 
 1. ✅ DOM挿入箇所の監査完了（F1〜F5を特定）
-2. 🔄 危険な `innerHTML` のDOM構築化 — F1〜F3の優先経路は対応済み。固定HTML・低リスク箇所の削減は継続
-3. 🔄 インラインイベントの廃止 — F1〜F3の動的生成箇所は対応済み。静的HTML等の残存箇所を `addEventListener` へ移行
-4. report-only 相当でCSP違反を確認
-5. CSP を正式適用
+2. ✅ `innerHTML` のDOM構築化 — フロントエンドJavaScriptから全廃
+3. ✅ インラインイベント／インラインscriptの廃止 — 外部JavaScriptの `addEventListener` へ移行済み
+4. ✅ CSP Report-Onlyを導入・実測 — 5画面で `style-src-attr` 87件（Studio 73 / setup 6 / settings 4 / chat 3 / sessions 1）、その他の違反0件
+5. ✅ インラインstyle 87件をCSS classへ移行し、再実測0件を確認後にCSPを正式適用
 
 ### 2. 機密ファイル権限制限
 
