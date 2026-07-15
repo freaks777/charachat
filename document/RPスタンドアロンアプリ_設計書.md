@@ -729,9 +729,9 @@ chroma:
 
 ## 5. プラグイン拡張
 
-アプリはプラグイン機構（ + ）を備えており、hook を通じて機能を拡張可能。
+アプリはプラグイン機構（`PluginManager` + `PluginBase`）を備えており、hook を通じて機能を拡張可能。
 現在実装済みの基本セット（secrets / mail / watchdog / memory / session_log / persona_studio）に加え、
-将来プラグインの構想は  に記載。
+将来プラグインの構想は `backlog.md` に記載。
 
 ---
 

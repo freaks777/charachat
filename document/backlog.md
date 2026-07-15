@@ -49,7 +49,7 @@
 | 3 | memory プラグインの重複記憶抑制（同一factの重複保存防止）。現在は同一事実が複数回抽出されるとChromaDBに重複保存される | 長期間運用で検索精度低下が確認された場合 |
 | 4 | HTTPクライアント（`httpx.AsyncClient`）のインスタンス再利用。現在は毎リクエストで新規生成しており、KeepAlive/TCP再利用が効かない | プラグイン数増加・高頻度API呼び出し時 |
 | 5 | ~~設定変更API（`/api/config/*`）の値バリデーション~~ → ✅ v3.10 で `validate_api_settings()` 等を実装、型・範囲チェック追加 | — |
-|| 6 | ~~`session-setup.js` の `persona_id` 属性エスケープ~~ → ✅ v3.10 で `escapeHtml(p.id)` 適用 | — |
+| 6 | ~~`session-setup.js` の `persona_id` 属性エスケープ~~ → ✅ v3.10 で `escapeHtml(p.id)` 適用 | — |
 
 ---
 
