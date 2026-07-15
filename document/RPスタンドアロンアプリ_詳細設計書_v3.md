@@ -1,7 +1,7 @@
-# RPスタンドアロンアプリ 詳細設計書 v3.9（コア／プラグイン分離版）
+# RPスタンドアロンアプリ 詳細設計書 v3.10（コア／プラグイン分離版）
 
 作成: 2026-06-30
-最終更新: 2026-07-15 (v3.9)
+最終更新: 2026-07-15 (v3.10)
 ベース: `スタンドアロン設計書.md`（CLI版）/ v2からの再構成
 
 ---
@@ -29,7 +29,7 @@ v2では機能を全部並列に詰め込んで肥大化したため、**コア*
 │     - チャットUI（コア）                   │
 │     - プラグインが追加するUI要素は動的に挿入 │
 └────────────────┬──────────────────────────┘
-                 │ HTTP / WebSocket
+                 │ HTTP (SSE)
 ┌────────────────▼──────────────────────────┐
 │  Python Backend (FastAPI)                  │
 │  ┌─────────────────────────────────────┐  │
@@ -102,7 +102,6 @@ F:\LLM\hermes-work\rp-standalone\
 │   ├── plugins/
 │   │   ├── base.py                 # PluginBase（+ shutdown）
 │   │   ├── plugin_manager.py       # hookディスパッチ＋shutdown_all
-│   │   ├── _test_dummy/            # hook発火確認用ダミー
 │   │   ├── watchdog/               # 放置検知＋エスカレーション通知
 │   │   ├── mail/                   # Gmail SMTP通知
 │   │   ├── memory/                 # ChromaDB長期記憶（RAG）
@@ -112,7 +111,7 @@ F:\LLM\hermes-work\rp-standalone\
 │   └── data/
 │       └── secrets_store.json
 │
-├── frontend/                       # SPA（StaticFiles配信、SSEチャット）
+├── frontend/                       # マルチページ（StaticFiles配信、SSEチャット）
 │   ├── index.html                  # チャット画面
 │   ├── sessions.html               # セッション一覧
 │   ├── session-setup.html          # 新規セッション設定
@@ -167,50 +166,51 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 app.mount("/frontend", StaticFiles(directory=str(BASE_DIR.parent / "frontend"), html=True), name="frontend")
 
-@app.websocket("/ws/chat")
-async def chat_ws(websocket: WebSocket):
-    await websocket.accept()
+@app.post("/api/chat")
+async def chat_sse(request: Request):
+    """SSE (Server-Sent Events) によるチャットストリーミング。
+    v3.1 で WebSocket から SSE に移行。"""
     touch_last_response()  # watchdog用タイムスタンプ更新
 
     ctx = SessionContext(persona_id=..., style=..., history=...)
     await plugin_manager.dispatch("on_session_start", ctx)
 
-    while True:
-        user_text = await websocket.receive_text()
-        ctx.user_input = user_text
+    body = await request.json()
+    user_text = body.get("message", "")
+    ctx.user_input = user_text
 
-        # hook: on_user_message（watchdogリセット、secretsマスキング）
-        ctx = await plugin_manager.dispatch("on_user_message", ctx)
+    # hook: on_user_message（watchdogリセット、secretsマスキング）
+    ctx = await plugin_manager.dispatch("on_user_message", ctx)
 
-        history.add(user_text, "")
-        context_messages = history.get_context()
+    history.add(user_text, "")
+    context_messages = history.get_context()
 
-        # hook: on_build_context（memoryのRAG検索注入）
-        context_messages = await plugin_manager.dispatch("on_build_context", context_messages, ctx)
-        # hook: on_before_request（最終確認）
-        context_messages = await plugin_manager.dispatch("on_before_request", context_messages, ctx)
+    # hook: on_build_context（memoryのRAG検索注入）
+    context_messages = await plugin_manager.dispatch("on_build_context", context_messages, ctx)
+    # hook: on_before_request（最終確認）
+    context_messages = await plugin_manager.dispatch("on_before_request", context_messages, ctx)
 
-        # ストリーミング応答
-        async for chunk in chat_stream(context_messages, config, model_info):
-            await websocket.send_json({"type": "chunk", "content": chunk})
+    async def event_generator():
+        try:
+            async for chunk in chat_stream(context_messages, config, model_info):
+                yield f"data: {json.dumps({'type': 'chunk', 'content': chunk})}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        except Exception as e:
+            # エラーコード化: HTTPStatusError(401)→api_key_missing 等
+            yield f"data: {json.dumps({'type': 'error', 'code': error_code})}\n\n"
 
-        # エラーコード化: HTTPStatusError(401)→api_key_missing/api_unauthorized,
-        #   TimeoutException→api_timeout, NetworkError→api_network, 他→api_unknown
-        # フロント側で t(code) により日英切り替え表示
-
-        history._save()
+        history.save_turn()
         touch_last_response()
 
         # hook: on_response_complete
         await plugin_manager.dispatch("on_response_complete", response_text, ctx)
 
-        # watchdog用エスカレーション文面を動的生成（会話文脈からAIが生成）
-        if watchdog有効:
-            await generate_escalation_texts(config)
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 ```
 
 コアはAPI呼び出しと履歴管理だけを知っており、具体的な処理は全てhook経由でプラグインに委譲される。
-エラーハンドリングは `httpx` 例外を型判定し、フロント向けにエラーコード `{"type": "error", "code": "api_key_missing"}` を返す。
+通信方式は v3.1 で WebSocket から SSE（Server-Sent Events）に移行。
+エラーハンドリングは `httpx` 例外を型判定し、フロント向けにエラーコードをSSEイベントとして返す。
 フロントは `i18n.js` の `t(code)` で言語設定に応じたメッセージに変換する。
 
 ### 3.3.1 PersonaManager（コア機能）
@@ -507,6 +507,21 @@ ctx.extras["token_count"] = 1234   # cost プラグイン
 
 **依存方向**: `SessionContext` はコアのデータ構造であり、プラグインからコアへの依存は発生しない（プラグインは `ctx` を受け取るだけ）。
 
+### 3.5.1 セッションメタデータ永続化（`.meta.json`）
+
+セッション開始時、文体（style）・記憶スコープ（memory_scope）・開始時刻を `sessions/{persona_id}/{date}_{session_id}.meta.json` に保存する。セッション再開時にこのファイルから復元し、セッション間で一貫した設定を維持する。
+
+```python
+meta = {
+    "style": persona_manager.get_active_style(),
+    "memory_scope": memory_scope,
+    "started_at": time.time(),
+}
+meta_path = BASE_DIR.parent / "sessions" / persona_id / f"{session_date}_{session_id}.meta.json"
+meta_path.parent.mkdir(parents=True, exist_ok=True)
+meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+```
+
 ### 3.6 config.yaml（コア部分、マルチプロバイダ対応）✅ 実装済み
 
 ```yaml
@@ -543,8 +558,7 @@ api:
 
 session:
   max_tokens: 32000
-  save_interval: 1
-  send_key: enter           # "enter" | "enter_ctrl" — 送信キー設定
+  save_interval: 1      # ※ save_turn() は現在この値を使用していない（常に毎ターン保存）
 
 personas_dir: ../personas
 default_persona: aoi-dystopia
@@ -599,7 +613,7 @@ style:
 
 ### 4.1 watchdog（放置検知＋メール通知）✅ 実装済み
 
-- hooks: `on_session_start`（タイマーリセット）, `on_user_message`（タイマーリセット）, `on_session_end`（監視停止）
+- hooks: `on_session_start`（タイマーリセット）, `on_user_message`（タイマーリセット）, `on_session_end`（監視維持、活動時刻・レベルをリセット）
 - priority: 20（他プラグインより先にユーザー操作を検知）
 - critical: False
 - `initialize()`: バックグラウンドの asyncio 監視ループ (`_monitor_loop`) を `asyncio.create_task()` で起動
@@ -662,8 +676,8 @@ chroma:
 
 - hooks: `on_session_end`
 - priority: 80
-- 会話履歴を Markdown 形式で `session-log/{persona_id}/YYYY-MM-DD.md` に保存
-- 同一ファイルが既存の場合は区切り線を入れて追記
+- 会話履歴を Markdown 形式で `session-log/{persona_id}/{session_id}.md` に保存
+- セッションID単位でファイルを分離。セッション終了時に全上書き（重複追記なし）
 
 ### 4.5 cost（コスト管理）⏭ スキップ
 
@@ -755,9 +769,13 @@ chroma:
 
 **例外**: 上記の平文運用方針に対して、「LLM（外部API）に送信してはいけない機密情報」だけは別ルールを適用する。ローカルディスクには平文で残ってよいが、**OpenRouter API等の外部送信経路には実値を一切乗せない**ことをコードレベルで保証する。
 
-### 7.2 機密情報マスキング機構（secrets プラグイン）
+### 7.2 機密情報マスキング機構（secrets プラグイン）⚠️ バックエンドのみ実装済み
 
-**仕組み**: プレースホルダー方式。ユーザーが「機密」とタグ付けして入力した値は、ローカルのみで保持する変数に変換され、以後のプロンプト構築・API送信・履歴保存はすべてプレースホルダー（例: `{{secret:1}}`）のまま扱われる。実値はローカルの`secrets_store`（暗号化なしのJSON/SQLite、9.1の方針通り平文）に保持し、**画面表示時にのみ**アプリ側で実値展開する。
+**実装ステータス**: バックエンド（`{{s: 実値}}` の検出・プレースホルダー化）のみ実装済み。
+フロント側の「機密として入力」UI、マスク表示、👁ボタンによる一時表示は未実装。
+Persona Studio の機密項目対応も未実装。
+
+**仕組み**: プレースホルダー方式。ユーザーが「機密」とタグ付けして入力した値は、ローカルのみで保持する変数に変換され、以後のプロンプト構築・API送信・履歴保存はすべてプレースホルダー（例: `{{secret:1}}`）のまま扱われる。実値はローカルの `secrets_store`（平文JSON）に保持し、**画面表示時にのみ**アプリ側で実値展開する（表示用のマスク・👁ボタンは未実装）。
 
 ```
 [ユーザー入力（機密タグ付き）]
@@ -984,7 +1002,7 @@ class MyPlugin(PluginBase):
 | `POST /api/session/truncate` | 指定index以降の全メッセージを削除（再生成用） |
 
 **編集UI**:
-- 履歴メッセージをWebSocket接続時に `type: "history"` で全送信
+- 履歴メッセージはセッション開始時に REST API で取得
 - 各メッセージに `[編集] [再生成(ユーザーのみ)] [削除]` ボタン
 - ユーザー発言編集 → truncate + 編集後テキストを再送信（`resend` フラグで重複追加防止）
 - AI応答編集 → `[編集済]` ラベル付与、正式履歴として扱う
@@ -992,7 +1010,7 @@ class MyPlugin(PluginBase):
 
 ### 11.3 応答中画面移動の保護
 
-WebSocket切断（応答ストリーミング中に画面移動）を `WebSocketDisconnect` で捕捉し、受信済みテキストに `[中断]` を付与してJSONLに保存。ユーザー発言は失われない。
+SSE切断（応答ストリーミング中に画面移動）をサーバー側で検知（v3.9 で `_run_with_disconnect_guard()` 追加）。受信済みテキストに `[中断]` を付与してJSONLに保存。ユーザー発言は失われない。
 
 ### 11.4 watchdog デフォルト OFF
 
@@ -1000,21 +1018,7 @@ WebSocket切断（応答ストリーミング中に画面移動）を `WebSocket
 
 ### 11.5 チャット入力
 
-config.yaml の `session.send_key` で送信キーを切替可能。
-
-| send_key | Enter | Ctrl+Enter | Shift+Enter |
-|---|---|---|---|
-| `"enter"`（デフォルト） | 送信 | 改行 | 改行 |
-| `"enter_ctrl"` | 送信 | 送信 | 改行 |
-
-chat.js は `DOMContentLoaded` で `/api/config/full` から `session.send_key` を読み込み、グローバル変数 `sendKeyMode` に保存。`msg-input` の `keydown` ハンドラ内で条件分岐:
-```js
-if (e.key === "Enter" && !e.shiftKey) {
-  const shouldSend = (sendKeyMode === "enter_ctrl") || !e.ctrlKey;
-  if (shouldSend) { e.preventDefault(); send(); }
-}
-```
-設定画面: 詳細タブ → 「送信キー」プルダウン → 「適用」。i18n キー: `labelSendKey`, `optSendKeyEnter`, `optSendKeyEnterCtrl`, `hintSendKey`。
+> **v3.7 で廃止**: 送信キー設定（`session.send_key`）は削除され、常に「Enter で送信、Shift+Enter で改行」に固定された。以下の記述は過去の仕様として残す。
 
 ---
 
@@ -1456,9 +1460,9 @@ if (not content or not content.strip()) and msg.get("reasoning_content"):
 
 `api.py` と `persona_studio/plugin.py` 内のロガー名が `rp_standalone`（アンダースコア）だったのを `rp-standalone`（ハイフン）に統一。main.py がハンドラを設定しているロガーと一致せず、全ログがサイレントに破棄されていた問題を修正。
 
-### 15.9 asyncio.Lock（準備）
+### 15.9 asyncio.Lock ✅ 適用済み
 
-複数ブラウザタブからの同時リクエストによるデータ競合を防止するため、`_api_lock = asyncio.Lock()` を追加。各エンドポイントへの適用は後続タスク。
+複数ブラウザタブからの同時リクエストによるデータ競合を防止するため、`_api_lock = asyncio.Lock()` を追加。ペルソナ切替、セッション開始・再開、履歴編集、チャット送信等の主要エンドポイントに適用済み。
 
 ### 15.10 UI 改善
 
@@ -1484,6 +1488,13 @@ if (not content or not content.strip()) and msg.get("reasoning_content"):
 | `import yaml` | `main.py` L25の死にimportを削除（ruamel.yaml移行済み） |
 | `STATE` 最大長 | `MAX_STATE_LENGTH = 4096` 追加 |
 | `t-income` 参照 | `fillTemplateForm()` 内のv3.3廃止フィールド参照2行を削除 |
+
+---
+
+## 16. v3.6 軽微修正・内部改善（2026-07-13）
+
+> **注**: v3.6 は軽微な内部改善・バグ修正が中心のため、独立した章としての詳細記録は省略。
+> v3.5 → v3.7 の差分については §15（v3.5 追加仕様）および §17（v3.7 品質改善）を参照。
 
 ---
 
