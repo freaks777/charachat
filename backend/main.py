@@ -59,7 +59,7 @@ from core.config import (
     validate_style_settings,
     validate_watchdog_settings,
 )
-from core.api import chat_stream, chat_sync
+from core.api import chat_stream, chat_sync, close_http_client, init_http_client
 from core.history import History
 from core.persona_manager import PersonaManager, load_style_yaml, validate_persona_id
 from core.session_context import SessionContext
@@ -153,28 +153,34 @@ async def lifespan(app: FastAPI):
         )
         logger.info("memory: embedding provider + ChromaDB ready")
 
-    yield
-    # 現在のセッションを終了（session_log + memory の事実抽出）
-    if persona_manager.active:
-        try:
-            history.save_turn(force=True)
-            ctx = SessionContext(
-                persona_id=persona_manager.active,
-                style=persona_manager.get_active_style() or {},
-                history=history,
-            )
-            await plugin_manager.dispatch("on_session_end", None, ctx)
-        except Exception:
-            logger.exception("on_session_end dispatch failed during shutdown")
-    # shutdown: 全プラグインのリソース解放
-    logger.info("shutting down plugins...")
-    await plugin_manager.shutdown_all()
-    # セッション状態ファイルをクリア（再起動時に旧セッションが残らないように）
-    current_path = BASE_DIR / ".current-session"
-    if current_path.exists():
-        current_path.unlink()
-        logger.info("session state cleared")
-    logger.info("shutdown complete")
+    init_http_client()
+    logger.info("HTTP client ready")
+    try:
+        yield
+        # 現在のセッションを終了（session_log + memory の事実抽出）
+        if persona_manager.active:
+            try:
+                history.save_turn(force=True)
+                ctx = SessionContext(
+                    persona_id=persona_manager.active,
+                    style=persona_manager.get_active_style() or {},
+                    history=history,
+                )
+                await plugin_manager.dispatch("on_session_end", None, ctx)
+            except Exception:
+                logger.exception("on_session_end dispatch failed during shutdown")
+        # shutdown: 全プラグインのリソース解放
+        logger.info("shutting down plugins...")
+        await plugin_manager.shutdown_all()
+        # セッション状態ファイルをクリア（再起動時に旧セッションが残らないように）
+        current_path = BASE_DIR / ".current-session"
+        if current_path.exists():
+            current_path.unlink()
+            logger.info("session state cleared")
+        logger.info("shutdown complete")
+    finally:
+        await close_http_client()
+        logger.info("HTTP client closed")
 
 
 app = FastAPI(title="RP Standalone", lifespan=lifespan)

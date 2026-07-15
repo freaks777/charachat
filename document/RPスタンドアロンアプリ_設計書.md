@@ -163,9 +163,13 @@ async def lifespan(app: FastAPI):
     # watchdog配線 + configure（initialize_allより前に必須）
     # secrets設定 / session_log出力先 / memory（ChromaDB + EmbeddingProvider）設定
     await plugin_manager.initialize_all()
-    yield
-    # shutdown: 全プラグインのリソース解放
-    await plugin_manager.shutdown_all()
+    init_http_client()  # max_connections=20 / keepalive=10
+    try:
+        yield
+        # shutdown: 全プラグインのリソース解放
+        await plugin_manager.shutdown_all()
+    finally:
+        await close_http_client()
 
 app = FastAPI(lifespan=lifespan)
 app.mount("/frontend", StaticFiles(directory=str(BASE_DIR.parent / "frontend"), html=True), name="frontend")
@@ -215,6 +219,7 @@ async def chat_sse(request: Request):
 コアはAPI呼び出しと履歴管理だけを知っており、具体的な処理は全てhook経由でプラグインに委譲される。
 通信方式は v3.1 で WebSocket から SSE（Server-Sent Events）に移行。
 エラーハンドリングは `httpx` 例外を型判定し、フロント向けにエラーコードをSSEイベントとして返す。
+`core/api.py` の共有 `httpx.AsyncClient` はFastAPI lifespanで生成・終了し、OpenAI互換・Anthropic・Googleの同期／ストリーム計6経路で接続プールを再利用する。上限は20接続、KeepAliveは10接続とし、タイムアウトは従来どおり各リクエストの設定値を適用する。ストリームレスポンスは各呼出側の `async with client.stream(...)` で確実に閉じる。
 フロントは `i18n.js` の `t(code)` で言語設定に応じたメッセージに変換する。
 
 ### 3.3.1 PersonaManager（コア機能）

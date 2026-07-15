@@ -1050,3 +1050,14 @@ DOM挿入監査で確認したF1〜F3を修正。
 - 新規保存、既存移行、エラー伝播、Windows分岐の回帰テストを追加
 
 **変更ファイル**: `backend/plugins/secrets/plugin.py`, `tests/test_regressions.py`, `document/RPスタンドアロンアプリ_設計書.md`, `document/backlog.md`
+
+### 22.13 HTTPクライアント共有・接続プール再利用（2026-07-16）
+
+- `core/api.py` のOpenAI互換・Anthropic・Google各同期／ストリーム計6経路で共有 `httpx.AsyncClient` を利用
+- FastAPI lifespanでクライアントを生成・終了し、終了時はプラグインのAPI利用が完了してから `aclose()` を実行
+- 接続上限20、KeepAlive上限10を設定し、TCP接続プールを再利用
+- プロバイダごとの既存タイムアウトはリクエスト単位の `timeout` 指定として維持
+- 初期化の冪等性、終了処理、クライアント再利用、タイムアウト、6経路移行を回帰テストに追加
+
+**変更ファイル**: `backend/core/api.py`, `backend/main.py`, `tests/test_regressions.py`, `document/RPスタンドアロンアプリ_設計書.md`, `document/backlog.md`
+**確認結果**: 回帰テスト26件成功、Python構文チェック成功、共有クライアント利用6経路・タイムアウト指定6経路を確認、`git diff --check` 問題なし

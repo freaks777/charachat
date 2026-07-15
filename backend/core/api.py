@@ -11,6 +11,7 @@
 
 import os
 import time
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import AsyncGenerator
@@ -18,6 +19,37 @@ from typing import AsyncGenerator
 import httpx
 import logging
 import json
+
+
+_http_client: httpx.AsyncClient | None = None
+
+
+def init_http_client() -> httpx.AsyncClient:
+    """共有HTTPクライアントを初期化し、既存インスタンスがあれば再利用する。"""
+    global _http_client
+    if _http_client is None or _http_client.is_closed:
+        _http_client = httpx.AsyncClient(
+            limits=httpx.Limits(
+                max_connections=20,
+                max_keepalive_connections=10,
+            )
+        )
+    return _http_client
+
+
+async def close_http_client():
+    """共有HTTPクライアントを終了する。"""
+    global _http_client
+    client = _http_client
+    _http_client = None
+    if client is not None and not client.is_closed:
+        await client.aclose()
+
+
+@asynccontextmanager
+async def _http_client_context():
+    """呼出側では閉じず、アプリのlifespanで管理する共有クライアントを返す。"""
+    yield init_http_client()
 
 
 # ── プロバイダ解決 ──────────────────────────────────────────────
@@ -243,12 +275,13 @@ async def _openai_stream(
     reasoning_buffer = ""
     has_content = False
 
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    async with _http_client_context() as client:
         async with client.stream(
             "POST",
             f"{base_url}/chat/completions",
             headers=headers,
             json=payload,
+            timeout=timeout,
         ) as response:
             response.raise_for_status()
             async for line in response.aiter_lines():
@@ -305,11 +338,12 @@ async def _openai_sync(
     timeout = httpx.Timeout(api_cfg.get("timeout", 120))
 
     t_start = time.time()
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    async with _http_client_context() as client:
         resp = await client.post(
             f"{provider['base_url']}/chat/completions",
             headers=_openai_headers(provider),
             json=payload,
+            timeout=timeout,
         )
         elapsed_ms = (time.time() - t_start) * 1000
         resp.raise_for_status()
@@ -405,12 +439,13 @@ async def _anthropic_stream(
 
     timeout = httpx.Timeout(api_cfg.get("timeout", 120))
 
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    async with _http_client_context() as client:
         async with client.stream(
             "POST",
             f"{provider['base_url']}/messages",
             headers=headers,
             json=payload,
+            timeout=timeout,
         ) as response:
             response.raise_for_status()
             async for line in response.aiter_lines():
@@ -459,11 +494,12 @@ async def _anthropic_sync(
 
     timeout = httpx.Timeout(api_cfg.get("timeout", 120))
 
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    async with _http_client_context() as client:
         resp = await client.post(
             f"{provider['base_url']}/messages",
             headers=headers,
             json=payload,
+            timeout=timeout,
         )
         resp.raise_for_status()
         data = resp.json()
@@ -518,12 +554,13 @@ async def _google_stream(
     timeout = httpx.Timeout(api_cfg.get("timeout", 120))
     url = f"{provider['base_url']}/models/{model}:streamGenerateContent?alt=sse&key={api_key}"
 
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    async with _http_client_context() as client:
         async with client.stream(
             "POST",
             url,
             headers={"Content-Type": "application/json"},
             json=payload,
+            timeout=timeout,
         ) as response:
             response.raise_for_status()
             async for line in response.aiter_lines():
@@ -574,11 +611,12 @@ async def _google_sync(
     timeout = httpx.Timeout(api_cfg.get("timeout", 120))
     url = f"{provider['base_url']}/models/{model}:generateContent?key={api_key}"
 
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    async with _http_client_context() as client:
         resp = await client.post(
             url,
             headers={"Content-Type": "application/json"},
             json=payload,
+            timeout=timeout,
         )
         resp.raise_for_status()
         data = resp.json()

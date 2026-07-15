@@ -13,6 +13,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 TEST_TMP = ROOT / ".test-tmp"
 TEST_TMP.mkdir(exist_ok=True)
 
+from core import api as core_api
 from core.api import _anthropic_messages, _gemini_contents
 from core.config import (
     validate_api_settings,
@@ -44,6 +45,82 @@ class ProviderConversionTests(unittest.TestCase):
         self.assertEqual(gemini_system, "SOUL\n\nSKILL\n\nCONSTRAINT")
         self.assertEqual(anthropic_messages[0]["content"], "hello")
         self.assertEqual(gemini_messages[0]["parts"][0]["text"], "hello")
+
+
+class HttpClientLifecycleTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncTearDown(self):
+        await core_api.close_http_client()
+
+    async def test_init_reuses_client_and_close_releases_it(self):
+        client = mock.MagicMock()
+        client.is_closed = False
+        client.aclose = mock.AsyncMock()
+        limits = mock.sentinel.limits
+
+        with (
+            mock.patch("core.api.httpx.Limits", return_value=limits) as limits_mock,
+            mock.patch("core.api.httpx.AsyncClient", return_value=client) as client_mock,
+        ):
+            first = core_api.init_http_client()
+            second = core_api.init_http_client()
+
+        self.assertIs(first, client)
+        self.assertIs(second, client)
+        limits_mock.assert_called_once_with(
+            max_connections=20,
+            max_keepalive_connections=10,
+        )
+        client_mock.assert_called_once_with(limits=limits)
+
+        await core_api.close_http_client()
+
+        client.aclose.assert_awaited_once()
+        self.assertIsNone(core_api._http_client)
+
+    async def test_sync_requests_reuse_client_and_keep_request_timeout(self):
+        response = mock.MagicMock()
+        response.json.return_value = {"content": [{"text": "ok"}]}
+        client = mock.MagicMock()
+        client.is_closed = False
+        client.aclose = mock.AsyncMock()
+        client.post = mock.AsyncMock(return_value=response)
+        core_api._http_client = client
+        provider = {
+            "base_url": "https://api.anthropic.com/v1",
+            "api_key": "test",
+        }
+        config = {"api": {"timeout": 37, "max_tokens": 100}}
+
+        first = await core_api._anthropic_sync([], provider, "model", config)
+        second = await core_api._anthropic_sync([], provider, "model", config)
+
+        self.assertEqual((first, second), ("ok", "ok"))
+        self.assertEqual(client.post.await_count, 2)
+        for call in client.post.await_args_list:
+            self.assertEqual(call.kwargs["timeout"].connect, 37)
+
+    def test_all_six_api_paths_use_shared_client_and_lifespan_closes_it(self):
+        api_source = (ROOT / "backend" / "core" / "api.py").read_text(
+            encoding="utf-8"
+        )
+        main_source = (ROOT / "backend" / "main.py").read_text(encoding="utf-8")
+
+        self.assertEqual(
+            api_source.count("async with _http_client_context() as client:"),
+            6,
+        )
+        self.assertNotIn(
+            "async with httpx.AsyncClient(timeout=timeout) as client:",
+            api_source,
+        )
+        self.assertLess(
+            main_source.index("init_http_client()"),
+            main_source.index("        yield"),
+        )
+        self.assertLess(
+            main_source.index("await plugin_manager.shutdown_all()"),
+            main_source.index("await close_http_client()"),
+        )
 
 
 class ConfigValidationTests(unittest.TestCase):
