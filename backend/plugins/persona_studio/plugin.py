@@ -430,7 +430,7 @@ class PersonaStudioPlugin(PluginBase):
                 else:
                     logger.warning("%s fallback empty: %s", task_name, stage_label)
             except Exception as e:
-                logger.warning("%s fallback error: %s — %s", task_name, stage_label, e)
+                logger.warning("%s fallback error: %s - %s", task_name, stage_label, e)
                 last_error = e
                 continue
 
@@ -473,11 +473,11 @@ class PersonaStudioPlugin(PluginBase):
                 )
                 return parsed
             except ValueError as e:
-                logger.warning("%s JSON parse failed: %s — %s", task_name, stage_label, e)
+                logger.warning("%s JSON parse failed: %s - %s", task_name, stage_label, e)
                 last_error = e
                 continue
             except Exception as e:
-                logger.warning("%s error: %s — %s", task_name, stage_label, e)
+                logger.warning("%s error: %s - %s", task_name, stage_label, e)
                 last_error = e
                 continue
 

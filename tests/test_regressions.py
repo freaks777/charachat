@@ -55,6 +55,71 @@ class ProviderConversionTests(unittest.TestCase):
         self.assertEqual(gemini_messages[0]["parts"][0]["text"], "hello")
 
 
+class DependencyCompatibilityTests(unittest.TestCase):
+    def test_memory_dependencies_are_declared_and_importable(self):
+        import importlib
+        from importlib.metadata import version
+        from packaging.specifiers import SpecifierSet
+
+        requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
+        for requirement in (
+            "sentence-transformers==5.6.0",
+            "transformers==5.12.1",
+            "huggingface-hub>=1.5.0,<2.0",
+            "chromadb==1.5.9",
+        ):
+            self.assertIn(requirement, requirements.splitlines())
+
+        self.assertEqual(version("sentence-transformers"), "5.6.0")
+        self.assertEqual(version("transformers"), "5.12.1")
+        self.assertIn(version("huggingface-hub"), SpecifierSet(">=1.5.0,<2.0"))
+        self.assertEqual(version("chromadb"), "1.5.9")
+        for module in (
+            "sentence_transformers",
+            "transformers",
+            "huggingface_hub",
+            "chromadb",
+        ):
+            with self.subTest(module=module):
+                importlib.import_module(module)
+
+    def test_application_log_messages_are_cp932_encodable(self):
+        sources = {
+            "main": (ROOT / "backend" / "main.py").read_text(encoding="utf-8"),
+            "mail": (ROOT / "backend" / "plugins" / "mail" / "plugin.py").read_text(
+                encoding="utf-8"
+            ),
+            "watchdog": (
+                ROOT / "backend" / "plugins" / "watchdog" / "plugin.py"
+            ).read_text(encoding="utf-8"),
+            "studio": (
+                ROOT / "backend" / "plugins" / "persona_studio" / "plugin.py"
+            ).read_text(encoding="utf-8"),
+        }
+        messages = {
+            "main": [
+                "frontend/ directory not found at %s - static files unavailable",
+                ".env file not found - API keys may be missing",
+            ],
+            "mail": [
+                "mail: env vars not set: %s - email notifications will not work",
+            ],
+            "watchdog": [
+                "watchdog: disabled by config - not starting monitor",
+            ],
+            "studio": [
+                "%s fallback error: %s - %s",
+                "%s JSON parse failed: %s - %s",
+                "%s error: %s - %s",
+            ],
+        }
+
+        for source_name, expected in messages.items():
+            for message in expected:
+                with self.subTest(source=source_name, message=message):
+                    self.assertIn(message, sources[source_name])
+                    message.encode("cp932")
+
 class HttpClientLifecycleTests(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self):
         await core_api.close_http_client()

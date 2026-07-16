@@ -78,7 +78,7 @@ class WatchdogPlugin(PluginBase):
 
     async def initialize(self):
         if not self._enabled:
-            logger.info("watchdog: disabled by config — not starting monitor")
+            logger.info("watchdog: disabled by config - not starting monitor")
             return
         self._ensure_monitor()
 

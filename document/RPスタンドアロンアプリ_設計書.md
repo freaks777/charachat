@@ -5,7 +5,7 @@
 > 旧統合設計書は `archive/` にアーカイブされています。
 
 作成: 2026-06-30
-最終更新: 2026-07-16 (v3.13)
+最終更新: 2026-07-16 (v3.14)
 ベース: 旧 `RPスタンドアロンアプリ_詳細設計書_v3.md` からの再構成
 
 ---
@@ -650,7 +650,7 @@ style:
 **起動引数**: `--debug`（DEBUGログ有効）、`--model MODEL_ID`（config.yamlのモデルを上書き）。
 **ポート**: 8765（`python main.py` → `uvicorn.run(app, host="127.0.0.1", port=8765)`）。
 **設定リセット**: `/api/config/reset` は `config.default.yaml` をコピーする方式。コード内にデフォルト値を重複管理しない。
-**ログ**: `RotatingFileHandler`（1MB×2世代）。長期運用でのログ肥大化を防止。
+**ログ**: `RotatingFileHandler`（1MB×2世代）。長期運用でのログ肥大化を防止。 Windowsの標準CP932コンソールでも診断を失わないよう、loggerの固定メッセージにはCP932で表現できる区切り文字を使用する。
 **フロントエンドURL**: クリーンURLで提供（`/sessions`, `/chat`, `/setup`, `/settings`, `/studio`）。`FileResponse` で `frontend/` 配下のHTMLを直接配信。CSS/JSは `/frontend/` マウントで従来通り。
 **共通ナビバー**: 全ページ上部に固定ナビバー（`#top-nav`）。`[セッション] [Studio] [設定] [EN/日本語]`。現在地は `.active` でハイライト。ページ間の戻るボタンは不要。
 
@@ -713,6 +713,7 @@ watchdog:
 - 保存ID: `persona_id`・`session_id`・正規化済み事実のSHA-256による決定的ID。保存は `upsert()` を使い、同じIDの再保存を安全に処理する
 - 重複範囲: 意味的類似や別セッション間の統合は行わず、セッションスコープ検索の互換性を維持する
 - `core/embedding.py`: `EmbeddingProvider` 抽象基底 + `SentenceTransformersProvider`（e5系モデル、`passage:`/`query:` プレフィックス、384次元、コサイン類似度）
+- 依存関係: `sentence-transformers==5.6.0`、`transformers==5.12.1`、`huggingface-hub>=1.5.0,<2.0`、`chromadb==1.5.9` を `requirements.txt` で一体管理し、更新時はクリーン環境の `pip check`・import・実モデル初期化・通常起動をまとめて検証する
 - コレクション: `rp_memory`（HNSW cosine、ペルソナID・セッションIDでフィルタ）
 - 設定: `config.yaml` の `chroma` セクション（`path`, `embedding_model`, `embedding_cache`）
 

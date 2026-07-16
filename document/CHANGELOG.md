@@ -1113,3 +1113,15 @@ DOM挿入監査で確認したF1〜F3を修正。
 
 **変更ファイル**: `backend/plugins/plugin_manager.py`, `backend/main.py`, `frontend/studio.html`, `frontend/settings.html`, `frontend/js/plugin-ui.js`, `frontend/css/style.css`, `tests/test_regressions.py`, `document/RPスタンドアロンアプリ_設計書.md`, `document/CHANGELOG.md`, `document/backlog.md`
 **確認結果**: 回帰テスト40件成功、Python・JavaScript構文チェック成功、実ASGI応答でversion 3と3画面CSPヘッダーを確認、ヘッドレスChromeのChat/Studio/Settings巡回でCSP違反0件、`git diff --check` 問題なし
+### 22.18 Python依存関係の整合性修復と通常起動回復（2026-07-16）
+
+- memory関連依存を `sentence-transformers==5.6.0`、`transformers==5.12.1`、`huggingface-hub>=1.5.0,<2.0`、`chromadb==1.5.9` として明示
+- `transformers==5.12.1` と `huggingface-hub==1.2.3` の不整合を解消し、既存環境を `huggingface-hub==1.23.0` へ更新
+- READMEの導入手順を `python -m pip install -r requirements.txt` へ統一
+- Windows CP932コンソールで診断ログが失われないよう、logger固定メッセージのem dashをASCII hyphenへ変更
+- requirements宣言、実行環境バージョン、4パッケージimport、CP932エンコードの回帰テストを追加
+- クリーンvenvでrequirementsから新規インストールし、`pip check`、import、実埋め込みモデル初期化（384次元）を確認
+- lifespan有効の通常起動、memory/HTTP client初期化、プラグイン逆順shutdown、embedding解放、HTTP client終了、ポート解放を確認
+
+**変更ファイル**: `requirements.txt`, `README.md`, `backend/main.py`, `backend/plugins/mail/plugin.py`, `backend/plugins/watchdog/plugin.py`, `backend/plugins/persona_studio/plugin.py`, `tests/test_regressions.py`, `document/RPスタンドアロンアプリ_設計書.md`, `document/CHANGELOG.md`, `document/backlog.md`
+**確認結果**: クリーンvenvと既存環境の `pip check` 成功、4パッケージimport成功、埋め込み初期化成功、回帰テスト42件成功、通常起動で主要3画面とプラグインUI APIが200、UnicodeEncodeError 0件、正常shutdown完了、8765番ポート解放、`git diff --check` 問題なし

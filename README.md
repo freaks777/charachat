@@ -76,18 +76,21 @@ bash start_server.sh
 - Python 3.11+
 - 対応プロバイダのAPIキー
 
-### 必須パッケージ
+### インストール
 
 ```bash
-pip install fastapi uvicorn httpx pyyaml python-dotenv ruamel.yaml
+python -m pip install -r requirements.txt
 ```
 
-### オプション
+`requirements.txt` にはコア機能とmemoryプラグインの検証済み依存関係が含まれます。
+
+### 主な追加パッケージ
 
 | パッケージ | 用途 |
 |---|---|
 | `chromadb` | memory プラグイン（長期記憶・ベクトル検索） |
 | `sentence-transformers` | memory プラグイン（埋め込みモデル） |
+| `transformers` / `huggingface-hub` | 埋め込みモデルの互換依存関係 |
 
 ## Supported Providers / 対応プロバイダ
 

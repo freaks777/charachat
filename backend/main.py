@@ -264,7 +264,7 @@ CONFIG_PATH = BASE_DIR / "config.yaml"
 # ── 静的ファイル配信（フロントエンドSPA） ──────────────────────
 FRONTEND_DIR = BASE_DIR.parent / "frontend"
 if not FRONTEND_DIR.exists():
-    logger.warning("frontend/ directory not found at %s — static files unavailable", FRONTEND_DIR)
+    logger.warning("frontend/ directory not found at %s - static files unavailable", FRONTEND_DIR)
 app.mount("/frontend", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
 config = load_config(CONFIG_PATH)
 
@@ -276,7 +276,7 @@ logger.info("model: %s", config["active_model"])
 
 # ── 起動時バリデーション ──────────────────────────────────────────
 if not _env_path:
-    logger.warning(".env file not found — API keys may be missing")
+    logger.warning(".env file not found - API keys may be missing")
 
 provider_id = config.get("active_provider", "")
 provider_cfg = config.get("providers", {}).get(provider_id, {})

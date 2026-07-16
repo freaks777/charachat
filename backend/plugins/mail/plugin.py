@@ -33,7 +33,7 @@ class MailPlugin(PluginBase):
                 missing.append(var)
         if missing:
             logger.warning(
-                "mail: env vars not set: %s — email notifications will not work",
+                "mail: env vars not set: %s - email notifications will not work",
                 ", ".join(missing),
             )
 
