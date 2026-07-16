@@ -29,6 +29,7 @@ UI_TEXT_FIELD_TYPES = {"text", "textarea"}
 UI_TEXT_FIELD_FIELDS = {"type", "id", "label", "required", "max_length", "placeholder", "value"}
 UI_SELECT_FIELD_FIELDS = {"type", "id", "label", "required", "options", "value"}
 UI_SELECT_OPTION_FIELDS = {"value", "label"}
+UI_CHECKBOX_FIELD_FIELDS = {"type", "id", "label", "required", "value"}
 
 
 class PluginManager:
@@ -222,7 +223,7 @@ class PluginManager:
                     if isinstance(label, str):
                         label = label.strip()
                     if (
-                        field_type not in UI_TEXT_FIELD_TYPES | {"select"}
+                        field_type not in UI_TEXT_FIELD_TYPES | {"select", "checkbox"}
                         or not isinstance(field_id, str)
                         or not UI_NAME_RE.fullmatch(field_id)
                         or field_id in field_ids
@@ -232,6 +233,20 @@ class PluginManager:
                     ):
                         return None
                     field_ids.add(field_id)
+                    if field_type == "checkbox":
+                        if set(field) != UI_CHECKBOX_FIELD_FIELDS:
+                            return None
+                        value = field.get("value")
+                        if type(value) is not bool:
+                            return None
+                        normalized_fields.append({
+                            "type": "checkbox",
+                            "id": field_id,
+                            "label": label,
+                            "required": required,
+                            "value": value,
+                        })
+                        continue
                     if field_type in UI_TEXT_FIELD_TYPES:
                         if not {"id", "label", "required", "max_length"}.issubset(field):
                             return None
@@ -452,13 +467,17 @@ class PluginManager:
         normalized_values = {}
         for field in fields:
             value = values.get(field["id"])
-            if not isinstance(value, str) or (field["required"] and value == ""):
-                return None
-            if field["type"] == "select":
-                if value not in {option["value"] for option in field["options"]}:
+            if field["type"] == "checkbox":
+                if type(value) is not bool or (field["required"] and not value):
                     return None
-            elif len(value) > field["max_length"]:
-                return None
+            else:
+                if not isinstance(value, str) or (field["required"] and value == ""):
+                    return None
+                if field["type"] == "select":
+                    if value not in {option["value"] for option in field["options"]}:
+                        return None
+                elif len(value) > field["max_length"]:
+                    return None
             normalized_values[field["id"]] = value
         return {"form_id": form["id"], "values": normalized_values}
 

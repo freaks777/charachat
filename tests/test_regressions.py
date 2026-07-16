@@ -480,6 +480,36 @@ class PluginUiTests(unittest.IsolatedAsyncioTestCase):
                     PluginManager._validate_ui_definition(plugin, definition)
                 )
 
+    def test_accepts_and_rejects_checkbox_definitions(self):
+        plugin = self.plugin("demo", definition=self.definition())
+        checkbox = {
+            "type": "checkbox", "id": "confirm", "label": "Confirm",
+            "required": True, "value": False,
+        }
+        definition = self.definition(components=[
+            self.form_component(fields=[checkbox])
+        ])
+
+        normalized = PluginManager._validate_ui_definition(plugin, definition)
+
+        self.assertEqual(normalized["components"][0]["fields"][0], checkbox)
+        invalid_fields = [
+            {**checkbox, "value": 0},
+            {**checkbox, "value": 1},
+            {**checkbox, "value": "true"},
+            {**checkbox, "value": None},
+            {**checkbox, "extra": True},
+            {key: value for key, value in checkbox.items() if key != "value"},
+        ]
+        for field in invalid_fields:
+            with self.subTest(field=field):
+                invalid = self.definition(components=[
+                    self.form_component(fields=[field])
+                ])
+                self.assertIsNone(
+                    PluginManager._validate_ui_definition(plugin, invalid)
+                )
+
     def test_rejects_invalid_text_form_definitions(self):
         plugin = self.plugin("demo", definition=self.definition())
         valid = self.form_component()
@@ -575,6 +605,53 @@ class PluginUiTests(unittest.IsolatedAsyncioTestCase):
             await rejecting.dispatch_ui_action("demo", "search", {
                 "form_id": "search-form", "values": {"mode": "injected"},
             })
+
+    async def test_validates_checkbox_payload_type_and_required_semantics(self):
+        fields = [
+            {
+                "id": "name", "label": "Name", "required": True,
+                "max_length": 20, "placeholder": "", "value": "",
+            },
+            {
+                "type": "checkbox", "id": "confirm", "label": "Confirm",
+                "required": True, "value": False,
+            },
+            {
+                "type": "checkbox", "id": "notify", "label": "Notify",
+                "required": False, "value": False,
+            },
+        ]
+        form = self.form_component(fields=fields)
+        definition = self.definition(components=[form])
+        manager = self.manager([self.plugin("demo", definition=definition)])
+        payload = {
+            "form_id": "search-form",
+            "values": {"name": "Example", "confirm": True, "notify": False},
+        }
+
+        accepted = await manager.dispatch_ui_action("demo", "search", payload)
+
+        self.assertEqual(accepted["data"], payload)
+        optional_true = {
+            **payload,
+            "values": {**payload["values"], "notify": True},
+        }
+        accepted_optional = await manager.dispatch_ui_action(
+            "demo", "search", optional_true
+        )
+        self.assertTrue(accepted_optional["data"]["values"]["notify"])
+        invalid_values = [False, 0, 1, "true", None]
+        for value in invalid_values:
+            with self.subTest(value=value):
+                rejecting = self.manager([
+                    self.plugin("demo", definition=definition, error="action")
+                ])
+                invalid = {
+                    **payload,
+                    "values": {**payload["values"], "confirm": value},
+                }
+                with self.assertRaises(ValueError):
+                    await rejecting.dispatch_ui_action("demo", "search", invalid)
 
     async def test_rejects_invalid_form_payload_before_plugin_handler(self):
         form = self.form_component()
@@ -895,7 +972,7 @@ class PluginUiTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertIn('@app.get("/api/plugins/ui")', main_source)
-        self.assertIn('"version": 7', main_source)
+        self.assertIn('"version": 8', main_source)
         self.assertIn(
             '@app.post("/api/plugins/{plugin_name}/actions/{action}")',
             main_source,
@@ -917,7 +994,7 @@ class PluginUiTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('button.textContent = component.label', script)
         self.assertIn('status.textContent = component.text', script)
         self.assertIn('separator.setAttribute("role", "separator")', script)
-        self.assertIn('payload.version !== 7', script)
+        self.assertIn('payload.version !== 8', script)
         self.assertIn('const groups = new Map()', script)
         self.assertIn('if (!groups.has(pluginName)) groups.set(pluginName, [])', script)
         self.assertIn('function validPluginDefinitions(definitions)', script)
@@ -933,6 +1010,9 @@ class PluginUiTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('input.type = "text"', script)
         self.assertIn('document.createElement("textarea")', script)
         self.assertIn('document.createElement("select")', script)
+        self.assertIn('input.type = "checkbox"', script)
+        self.assertIn('input.checked = field.value', script)
+        self.assertIn('input.type === "checkbox" ? input.checked : input.value', script)
         self.assertIn('option.textContent = item.label', script)
         self.assertIn('input.autocomplete = "off"', script)
         self.assertIn('input.value = field.value', script)
@@ -958,7 +1038,7 @@ class PluginDevelopmentGuideTests(unittest.IsolatedAsyncioTestCase):
         compile(source, str(template), "exec")
 
         for required in [
-            "version 7",
+            "version 8",
             "chat.input_actions",
             "chat.toolbar",
             "studio.actions",
@@ -997,7 +1077,9 @@ class PluginDevelopmentGuideTests(unittest.IsolatedAsyncioTestCase):
 
         saved = await manager.dispatch_ui_action("my_plugin", "save_settings", {
             "form_id": "settings-form",
-            "values": {"display_name": "Example", "mode": "safe"},
+            "values": {
+                "display_name": "Example", "mode": "safe", "enabled": False,
+            },
         })
         self.assertEqual(saved["status"], "ok")
 

@@ -1200,3 +1200,19 @@ DOM挿入監査で確認したF1〜F3を修正。
 **変更ファイル**: `backend/plugins/plugin_manager.py`, `backend/main.py`, `backend/plugins/_template/plugin.py`, `frontend/js/plugin-ui.js`, `frontend/css/style.css`, `tests/test_regressions.py`, `document/plugin_development.md`, `document/RPスタンドアロンアプリ_設計書.md`, `document/CHANGELOG.md`, `document/backlog.md`
 
 **確認結果**: 回帰テスト61件成功、Plugin UIテスト27件成功、ガイド・雛形テスト2件成功、Python・JavaScript構文チェック成功、`git diff --check` 問題なし
+
+### 22.24 動的プラグインUI拡張 Phase 7（2026-07-17）
+
+- UIスキーマをversion 8へ更新し、form fieldへJSON booleanを扱う `checkbox` を追加
+- checkbox定義を `type` / `id` / `label` / `required` / `value` の5属性だけに限定
+- 初期valueと送信値をboolだけに制限し、`type(value) is bool` でPythonのbool/intを厳密分離
+- required checkboxはTrueを必須とし、False、0 / 1、文字列、nullをhandler呼出前に拒否
+- 既存text/textarea/selectは文字列payloadを維持し、version 7定義との互換性を保持
+- フロントはDOM APIでcheckboxを構築し、checkedプロパティからboolean値を収集
+- 既存formの送信中無効化・復帰、feedback、CustomEvent、status更新処理を混在fieldでも共通利用
+- コピー用雛形へcheckbox例を追加し、開発ガイド・設計書・backlogをversion 8へ同期
+- number、secrets連携、checkbox group、field単位disabledは後続タスクとして維持
+
+**変更ファイル**: `backend/plugins/plugin_manager.py`, `backend/main.py`, `backend/plugins/_template/plugin.py`, `frontend/js/plugin-ui.js`, `frontend/css/style.css`, `tests/test_regressions.py`, `document/plugin_development.md`, `document/RPスタンドアロンアプリ_設計書.md`, `document/CHANGELOG.md`, `document/backlog.md`
+
+**確認結果**: 回帰テスト63件成功、Plugin UIテスト29件成功、ガイド・雛形テスト2件成功、Python・JavaScript構文チェック成功、`git diff --check` 問題なし

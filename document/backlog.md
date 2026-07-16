@@ -5,7 +5,7 @@
 
 ---
 
-## 優先度順タスク（2026-07-16 更新）
+## 優先度順タスク（2026-07-17 更新）
 
 ### 1. CSP/XSS 監査と対策（完了）
 
@@ -19,7 +19,7 @@
 
 | 項目 | 詳細 | 参照 |
 |------|------|------|
-| 動的プラグインUI拡張 | 非文字列field型（checkbox / number）とsecrets連携 | UI基盤version 7 |
+| 動的プラグインUI拡張 | number fieldとsecrets連携 | UI基盤version 8 |
 | memory依存の定期更新 | 4パッケージを一体で更新し、クリーンvenv・実モデル・通常起動を再検証 | `requirements.txt` |
 
 ### 3. 設計・UI改善

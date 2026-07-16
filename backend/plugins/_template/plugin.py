@@ -70,6 +70,12 @@ class TemplatePlugin(PluginBase):
                                 {"value": "fast", "label": "Fast"},
                             ],
                             "value": "safe",
+                        },                        {
+                            "type": "checkbox",
+                            "id": "enabled",
+                            "label": "Enable feature",
+                            "required": False,
+                            "value": False,
                         },
                     ],
                 }],

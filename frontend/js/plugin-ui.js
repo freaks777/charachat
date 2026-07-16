@@ -71,13 +71,13 @@
         if (typeof field.id !== "string" || !NAME_RE.test(field.id)
             || fieldIds.has(field.id)
             || typeof field.label !== "string" || field.label.length < 1 || field.label.length > 80
-            || typeof field.required !== "boolean"
-            || typeof field.value !== "string") return false;
+            || typeof field.required !== "boolean") return false;
         if (field.type === "text" || field.type === "textarea") {
           if (fieldKeys.length !== 7
               || !fieldKeys.every(key => [
                 "type", "id", "label", "required", "max_length", "placeholder", "value",
               ].includes(key))
+              || typeof field.value !== "string"
               || !Number.isInteger(field.max_length)
               || field.max_length < 1 || field.max_length > 2000
               || typeof field.placeholder !== "string" || field.placeholder.length > 100
@@ -87,6 +87,7 @@
               || !fieldKeys.every(key => [
                 "type", "id", "label", "required", "options", "value",
               ].includes(key))
+              || typeof field.value !== "string"
               || !Array.isArray(field.options)
               || field.options.length < 1 || field.options.length > 50) return false;
           const optionValues = new Set();
@@ -101,6 +102,12 @@
             optionValues.add(option.value);
           }
           if (!optionValues.has(field.value)) return false;
+        } else if (field.type === "checkbox") {
+          if (fieldKeys.length !== 5
+              || !fieldKeys.every(key => [
+                "type", "id", "label", "required", "value",
+              ].includes(key))
+              || typeof field.value !== "boolean") return false;
         } else {
           return false;
         }
@@ -297,7 +304,12 @@
           const labelText = document.createElement("span");
           labelText.textContent = field.label;
           let input;
-          if (field.type === "select") {
+          if (field.type === "checkbox") {
+            input = document.createElement("input");
+            input.type = "checkbox";
+            input.checked = field.value;
+            label.classList.add("is-checkbox");
+          } else if (field.type === "select") {
             input = document.createElement("select");
             for (const item of field.options) {
               const option = document.createElement("option");
@@ -318,7 +330,7 @@
             input.autocomplete = "off";
           }
           input.name = field.id;
-          input.value = field.value;
+          if (field.type !== "checkbox") input.value = field.value;
           input.required = field.required;
           input.disabled = component.disabled;
           label.append(labelText, input);
@@ -335,7 +347,9 @@
           event.preventDefault();
           if (component.disabled) return;
           const values = {};
-          for (const input of inputs) values[input.name] = input.value;
+          for (const input of inputs) {
+            values[input.name] = input.type === "checkbox" ? input.checked : input.value;
+          }
           const controls = [...inputs, submit];
           const disabledStates = controls.map(control => control.disabled);
           controls.forEach(control => { control.disabled = true; });
@@ -393,7 +407,7 @@
       if (!response.ok) throw new Error("plugin UI HTTP " + response.status);
       const payload = await response.json();
       if (generation !== initGeneration) return;
-      if (!payload || payload.version !== 7 || !Array.isArray(payload.plugins)) {
+      if (!payload || payload.version !== 8 || !Array.isArray(payload.plugins)) {
         throw new Error("invalid plugin UI payload");
       }
       for (const definition of collectValidDefinitions(payload.plugins)) {

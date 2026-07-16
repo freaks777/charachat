@@ -1288,6 +1288,14 @@ input.invalid {
   color: var(--text);
   font: inherit;
 }
+.plugin-ui-form-field.is-checkbox {
+  flex-direction: row;
+  align-items: center;
+}
+.plugin-ui-form-field.is-checkbox input {
+  min-width: 0;
+  width: auto;
+}
 .plugin-ui-form-field textarea {
   min-height: 64px;
   resize: vertical;
