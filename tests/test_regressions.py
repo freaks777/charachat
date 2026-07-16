@@ -197,12 +197,27 @@ class PluginUiTests(unittest.IsolatedAsyncioTestCase):
             ["chat.toolbar", "chat.input_actions"],
         )
 
+    def test_accepts_all_four_ui_slots(self):
+        plugin = self.plugin("demo", definition=self.definition())
+        slots = [
+            "chat.input_actions",
+            "chat.toolbar",
+            "studio.actions",
+            "settings.plugins",
+        ]
+
+        for slot in slots:
+            with self.subTest(slot=slot):
+                definition = self.definition(slot)
+                normalized = PluginManager._validate_ui_definition(plugin, definition)
+                self.assertEqual(normalized["slot"], slot)
+
     def test_rejects_unknown_fields_types_names_and_duplicate_ids(self):
         plugin = self.plugin("demo", definition=self.definition())
         valid = self.definition()
         cases = [
             {**valid, "html": "<b>x</b>"},
-            self.definition("settings.plugins"),
+            self.definition("sessions.actions"),
             self.definition(components=[{
                 "type": "image", "id": "x", "label": "X", "action": "run",
             }]),
@@ -270,6 +285,7 @@ class PluginUiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["status"], "ok")
         with self.assertRaises(KeyError):
             await manager.dispatch_ui_action("demo", "state", {})
+
     async def test_dispatches_only_enabled_defined_actions(self):
         plugin = self.plugin("demo", definition=self.definition())
         manager = self.manager([plugin])
@@ -352,7 +368,9 @@ class PluginUiTests(unittest.IsolatedAsyncioTestCase):
 
     def test_api_and_frontend_enforce_limits_and_dom_only_rendering(self):
         main_source = (ROOT / "backend" / "main.py").read_text(encoding="utf-8")
-        html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
+        chat_html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
+        studio_html = (ROOT / "frontend" / "studio.html").read_text(encoding="utf-8")
+        settings_html = (ROOT / "frontend" / "settings.html").read_text(encoding="utf-8")
         script = (ROOT / "frontend" / "js" / "plugin-ui.js").read_text(
             encoding="utf-8"
         )
@@ -364,20 +382,30 @@ class PluginUiTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertIn("if not _same_origin(request):", main_source)
         self.assertIn("16_384", main_source)
-        self.assertIn('data-plugin-slot="chat.toolbar"', html)
-        self.assertIn('data-plugin-slot="chat.input_actions"', html)
-        self.assertIn('src="/frontend/js/plugin-ui.js"', html)
+        self.assertIn('persona_id=persona_manager.active or ""', main_source)
+        self.assertIn('data-plugin-slot="chat.toolbar"', chat_html)
+        self.assertIn('data-plugin-slot="chat.input_actions"', chat_html)
+        self.assertIn('data-plugin-slot="studio.actions"', studio_html)
+        self.assertIn('data-plugin-slot="settings.plugins"', settings_html)
+        for html in (chat_html, studio_html, settings_html):
+            self.assertIn('src="/frontend/js/plugin-ui.js"', html)
+            self.assertLess(
+                html.index('src="/frontend/js/i18n.js"'),
+                html.index('src="/frontend/js/plugin-ui.js"'),
+            )
+            self.assertIn('id="plugin-ui-feedback"', html)
         self.assertIn('button.textContent = component.label', script)
         self.assertIn('status.textContent = component.text', script)
         self.assertIn('separator.setAttribute("role", "separator")', script)
-        self.assertIn('payload.version !== 2', script)
+        self.assertIn('payload.version !== 3', script)
         self.assertIn('button.addEventListener("click"', script)
         self.assertIn("slot.replaceChildren()", script)
         self.assertIn("generation !== initGeneration", script)
         self.assertIn("console.error", script)
         self.assertNotIn("innerHTML", script)
-        for attribute in ("onclick=", "onchange=", "oninput=", " style="):
-            self.assertNotIn(attribute, html)
+        for html in (chat_html, studio_html, settings_html):
+            for attribute in ("onclick=", "onchange=", "oninput=", " style="):
+                self.assertNotIn(attribute, html)
 
 
 class ConfigValidationTests(unittest.TestCase):

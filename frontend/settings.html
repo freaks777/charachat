@@ -21,6 +21,11 @@
     <h1 data-i18n="settingsTitle">設定</h1>
   </header>
 
+  <div class="plugin-ui-page-band">
+    <div id="plugin-slot-settings-plugins" class="plugin-ui-slot plugin-ui-page-slot" data-plugin-slot="settings.plugins"></div>
+    <div id="plugin-ui-feedback" class="plugin-ui-feedback plugin-ui-page-feedback is-hidden" role="status" aria-live="polite"></div>
+  </div>
+
   <div class="settings-tabs">
     <button class="tab-btn active" data-tab="provider" data-i18n="tabProvider">プロバイダ / モデル</button>
     <button class="tab-btn" data-tab="extraction" data-i18n="tabExtraction">抽出タスク用モデル</button>
@@ -208,6 +213,7 @@
 
 <script src="/frontend/js/i18n.js"></script>
 <script src="/frontend/js/settings.js"></script>
+<script src="/frontend/js/plugin-ui.js"></script>
 <a id="back-to-top" href="#" title="トップへ">↑</a>
 </body>
 </html>

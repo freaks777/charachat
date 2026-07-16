@@ -1101,3 +1101,15 @@ DOM挿入監査で確認したF1〜F3を修正。
 
 **変更ファイル**: `backend/plugins/plugin_manager.py`, `backend/main.py`, `frontend/js/plugin-ui.js`, `frontend/css/style.css`, `tests/test_regressions.py`, `document/RPスタンドアロンアプリ_設計書.md`, `document/CHANGELOG.md`, `document/backlog.md`
 **確認結果**: 回帰テスト39件成功、Python・JavaScript構文チェック成功、CSP禁止パターンなし、`git diff --check` 問題なし
+### 22.17 動的プラグインUI拡張 Phase 2（2026-07-16）
+
+- UIスキーマをversion 3へ更新し、`studio.actions` と `settings.plugins` を追加
+- 既存のbutton/separator/statusと型別allowlistを変更せず、4スロットで共通利用
+- Studioヘッダーに操作スロット、Settingsのタブ外上部に常時表示スロットを追加
+- Studio/Settingsへ共通フィードバック領域を追加し、`i18n.js` と既存画面スクリプトの後に `plugin-ui.js` を読込
+- セッション未開始時は空のpersona_idを許容し、セッション必須条件をプラグイン側の責務として設計書へ明記
+- 入力フォーム、status動的更新、複数スロット定義は後続タスクとして維持
+- 4スロット受理、未知スロット拒否、3画面配置、読込順、空セッションコンテキストの回帰テストを追加
+
+**変更ファイル**: `backend/plugins/plugin_manager.py`, `backend/main.py`, `frontend/studio.html`, `frontend/settings.html`, `frontend/js/plugin-ui.js`, `frontend/css/style.css`, `tests/test_regressions.py`, `document/RPスタンドアロンアプリ_設計書.md`, `document/CHANGELOG.md`, `document/backlog.md`
+**確認結果**: 回帰テスト40件成功、Python・JavaScript構文チェック成功、実ASGI応答でversion 3と3画面CSPヘッダーを確認、ヘッドレスChromeのChat/Studio/Settings巡回でCSP違反0件、`git diff --check` 問題なし

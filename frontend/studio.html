@@ -19,7 +19,9 @@
 <div id="studio-ui">
   <header id="studio-header">
     <h2 data-i18n="studioTitle">Persona Studio</h2>
+    <div id="plugin-slot-studio-actions" class="plugin-ui-slot plugin-ui-page-slot" data-plugin-slot="studio.actions"></div>
   </header>
+  <div id="plugin-ui-feedback" class="plugin-ui-feedback plugin-ui-page-feedback is-hidden" role="status" aria-live="polite"></div>
 
   <div class="tab-row">
     <button class="active" data-studio-tab="template" data-i18n="tabTemplate">固定フォーム</button>
@@ -238,6 +240,7 @@
 
 <script src="/frontend/js/i18n.js"></script>
 <script src="/frontend/js/studio.js"></script>
+<script src="/frontend/js/plugin-ui.js"></script>
 <a id="back-to-top" href="#" title="トップへ">↑</a>
 </body>
 </html>

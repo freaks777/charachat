@@ -1223,6 +1223,34 @@ input.invalid {
   gap: 6px;
 }
 .plugin-ui-slot:empty { display: none; }
+.plugin-ui-page-slot {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+.plugin-ui-page-slot .plugin-ui-button {
+  padding: 5px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+.plugin-ui-page-band {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.plugin-ui-page-band:has(.plugin-ui-page-slot:empty) { display: none; }
+.plugin-ui-page-feedback {
+  width: 100%;
+  padding: 6px 0 0;
+  border-top: 1px solid var(--border);
+  background: transparent;
+}
 #plugin-slot-chat-toolbar .plugin-ui-button {
   padding: 5px 9px;
   border: 1px solid var(--border);

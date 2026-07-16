@@ -11,7 +11,12 @@ from plugins.base import PluginBase
 
 logger = logging.getLogger("rp-standalone")
 
-UI_SLOTS = {"chat.input_actions", "chat.toolbar"}
+UI_SLOTS = {
+    "chat.input_actions",
+    "chat.toolbar",
+    "studio.actions",
+    "settings.plugins",
+}
 UI_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 UI_DEFINITION_FIELDS = {"slot", "components"}
 UI_BUTTON_FIELDS = {"type", "id", "label", "action", "disabled"}

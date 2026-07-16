@@ -4,6 +4,8 @@
   const SLOT_IDS = Object.freeze({
     "chat.input_actions": "plugin-slot-chat-input-actions",
     "chat.toolbar": "plugin-slot-chat-toolbar",
+    "studio.actions": "plugin-slot-studio-actions",
+    "settings.plugins": "plugin-slot-settings-plugins",
   });
   const NAME_RE = /^[a-zA-Z0-9_-]{1,64}$/;
   let initGeneration = 0;
@@ -159,7 +161,7 @@
       if (!response.ok) throw new Error("plugin UI HTTP " + response.status);
       const payload = await response.json();
       if (generation !== initGeneration) return;
-      if (!payload || payload.version !== 2 || !Array.isArray(payload.plugins)) {
+      if (!payload || payload.version !== 3 || !Array.isArray(payload.plugins)) {
         throw new Error("invalid plugin UI payload");
       }
       for (const definition of payload.plugins) {

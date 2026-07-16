@@ -5,7 +5,7 @@
 > 旧統合設計書は `archive/` にアーカイブされています。
 
 作成: 2026-06-30
-最終更新: 2026-07-16 (v3.12)
+最終更新: 2026-07-16 (v3.13)
 ベース: 旧 `RPスタンドアロンアプリ_詳細設計書_v3.md` からの再構成
 
 ---
@@ -471,7 +471,7 @@ class PluginBase(ABC):
         return {"status": "error", "message": "unsupported action", "data": {}}
 ```
 
-**動的プラグインUI基盤**: `get_ui_slot()` はHTML・JavaScript・CSSではなく構造化データだけを返す。スキーマversion 2は操作用の `button` と、表示専用の `separator` / `status` を扱い、配置先は `chat.input_actions` と `chat.toolbar` の2スロットに限定する。`status` は静的表示のみで、`text` は1〜200文字、`level` は `info` / `success` / `warning` / `error` の4値とする。定義は `PluginManager.collect_ui_definitions()` がpriority順に収集し、コンポーネント型ごとのフィールド、ID、文字数、level、未知フィールド、重複IDをallowlist方式で検証する。プラグイン単位の定義取得失敗はログに残して隔離する。
+**動的プラグインUI基盤**: `get_ui_slot()` はHTML・JavaScript・CSSではなく構造化データだけを返す。スキーマversion 3は操作用の `button` と、表示専用の `separator` / `status` を扱い、配置先は `chat.input_actions`、`chat.toolbar`、`studio.actions`、`settings.plugins` の4スロットに限定する。`status` は静的表示のみで、`text` は1〜200文字、`level` は `info` / `success` / `warning` / `error` の4値とする。定義は `PluginManager.collect_ui_definitions()` がpriority順に収集し、コンポーネント型ごとのフィールド、ID、文字数、level、未知フィールド、重複IDをallowlist方式で検証する。プラグイン単位の定義取得失敗はログに残して隔離する。
 
 ```python
 {
@@ -494,9 +494,9 @@ class PluginBase(ABC):
 }
 ```
 
-APIは `GET /api/plugins/ui` で有効な定義を返し、`POST /api/plugins/{plugin_name}/actions/{action}` で定義済みかつ有効なアクションだけを実行する。POSTは同一オリジン、16KB以下のJSON objectに限定する。コアは形式・サイズ・公開アクションを検証し、各プラグインは必須キー、値型、範囲、パス等の業務検証を担当する。応答は `{status, message, data}` に固定し、messageは500文字、JSON化したdataは64KBを上限とする。
+APIは `GET /api/plugins/ui` で有効な定義を返し、`POST /api/plugins/{plugin_name}/actions/{action}` で定義済みかつ有効なアクションだけを実行する。POSTは同一オリジン、16KB以下のJSON objectに限定する。 Studio/Settingsではセッション開始前の操作を許容し、`SessionContext.persona_id` は空文字列になり得る。セッション必須条件は各プラグインが検証する。コアは形式・サイズ・公開アクションを検証し、各プラグインは必須キー、値型、範囲、パス等の業務検証を担当する。応答は `{status, message, data}` に固定し、messageは500文字、JSON化したdataは64KBを上限とする。
 
-フロントの `plugin-ui.js` はDOM APIと `textContent` だけで各コンポーネントを描画し、buttonの操作には `addEventListener()` を使用する。separator/statusには固定CSSクラスだけを割り当て、プラグイン由来のclassやstyleは受け付けない。初期化とbutton操作の例外を隔離し、失敗時も `chat.js` の入力・送信・履歴表示へ影響させない。結果は共通フィードバック領域と `plugin-ui-result` CustomEventへ通知する。
+フロントの `plugin-ui.js` はDOM APIと `textContent` だけで各コンポーネントを描画し、buttonの操作には `addEventListener()` を使用する。separator/statusには固定CSSクラスだけを割り当て、プラグイン由来のclassやstyleは受け付けない。チャット、Studio、Settingsの各画面でページ内に存在するスロットだけを描画する。`plugin-ui.js` は各画面で `i18n.js` より後に読み込む。初期化とbutton操作の例外を隔離し、失敗時も各画面の既存JavaScriptへ影響させない。結果は共通フィードバック領域と `plugin-ui-result` CustomEventへ通知する。
 
 **プラグインの実行順序**: `priority` の昇順。デフォルトは100。
 
