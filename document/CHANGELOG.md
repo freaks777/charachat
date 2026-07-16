@@ -1246,7 +1246,27 @@ DOM挿入監査で確認したF1〜F3を修正。
 **確認結果**: 回帰テスト66件成功、Plugin UIテスト32件成功、ガイド・雛形テスト2件成功、Python・JavaScript構文チェック成功、`git diff --check` 問題なし
 
 ### 22.27 状態履歴と編集・削除・再生成の整合性（2026-07-17）
-- 正常完了したSTATEだけを {session_id}_state_history.jsonl に会話境界ごと記録する。
-- 編集・削除・truncate・再開では、残った履歴以下で最新の状態へ復元し、後続履歴を破棄する。
-- STATEなし・中断・エラーは記録せず、状態本体・副履歴は原子的に更新する。
-- チャットUIは編集・削除・再生成後に状態APIを再読込する。
+
+- 正常完了したSTATEだけを {session_id}_state_history.jsonl に会話境界ごと記録する
+- 編集・削除・truncate・再開では、残った履歴以下で最新の状態へ復元し、後続履歴を破棄する
+- STATEなし・中断・エラーは記録せず、状態本体・副履歴は原子的に更新する
+- チャットUIは編集・削除・再生成後に状態APIを再読込する
+
+**変更ファイル**: `backend/main.py`, `frontend/js/chat.js`, `tests/test_regressions.py`, `document/RPスタンドアロンアプリ_設計書.md`, `document/CHANGELOG.md`
+
+**確認結果**: 回帰テスト67件成功、Python・JavaScript構文チェック成功、`git diff --check` 問題なし
+
+### 22.28 状態更新の信頼性と初期state（2026-07-17）
+
+- SOUL.mdの `#` / `## 開始時の状況` 節を新規セッションの初期stateとしてseedし、message_count 0のsnapshotを記録
+- 通常のSTATE更新を既存stateへのmerge方式へ変更し、モデルが言及しなかった項目を保持
+- `- 項目名: [解決]` だけを明示的削除として扱い、全項目解決後の空stateも有効なsnapshotとして保存
+- STATEが2回連続で欠落した場合は次回以降のプロンプトへ再確認指示を追加し、追加LLM呼び出しは行わない
+- merge後またはseedが4,096文字を超える場合は自動切り詰めせず更新を拒否し、通常更新では直前stateを維持して次回1回だけ整理指示を追加
+- 欠落回数と上限超過指示を新規開始、再開、ペルソナ切替、履歴復元でリセットし、キャンセル・上限超過を欠落回数へ加算しない
+- 初回実装 `51187a2` のmerge、空snapshot、セッション境界、seed上限の不整合を再レビューで検出し、`f6de4fd` で修正
+- P3テストをソース文字列の存在確認から、merge・明示解決・空state・overflow・境界リセット・seed上限の振る舞い検証へ更新
+
+**変更ファイル**: `backend/main.py`, `tests/test_regressions.py`, `document/RPスタンドアロンアプリ_設計書.md`, `document/CHANGELOG.md`, `document/backlog.md`
+
+**確認結果**: P1/P3対象テスト7件成功、全回帰73件成功、Python構文チェック成功、`git diff --check` 問題なし
