@@ -262,6 +262,126 @@ class PluginUiTests(unittest.IsolatedAsyncioTestCase):
             ["chat.toolbar", "chat.input_actions"],
         )
 
+    def test_accepts_legacy_and_multi_slot_definitions_in_declared_order(self):
+        legacy = self.plugin("legacy", 10, self.definition("chat.toolbar"))
+        multi = self.plugin("multi", 20, [
+            self.definition("settings.plugins", components=[{
+                "type": "button", "id": "settings-run", "label": "Run",
+                "action": "run",
+            }]),
+            self.definition("studio.actions", components=[{
+                "type": "status", "id": "studio-state", "text": "Ready",
+                "level": "info",
+            }]),
+        ])
+        manager = self.manager([multi, legacy])
+
+        definitions = manager.collect_ui_definitions()
+
+        self.assertEqual(
+            [(item["name"], item["slot"]) for item in definitions],
+            [
+                ("legacy", "chat.toolbar"),
+                ("multi", "settings.plugins"),
+                ("multi", "studio.actions"),
+            ],
+        )
+
+    def test_accepts_four_definitions_and_rejects_invalid_multi_slot_sets(self):
+        slots = [
+            "chat.input_actions", "chat.toolbar", "studio.actions", "settings.plugins",
+        ]
+        valid = [
+            self.definition(slot, components=[{
+                "type": "status", "id": f"state-{index}", "text": "Ready",
+                "level": "info",
+            }])
+            for index, slot in enumerate(slots)
+        ]
+        plugin = self.plugin("demo", definition=valid)
+        self.assertEqual(
+            len(PluginManager._validate_ui_definitions(plugin, valid)), 4
+        )
+
+        duplicate_slot = [valid[0], {
+            **valid[1], "slot": valid[0]["slot"],
+        }]
+        duplicate_id = [valid[0], {
+            **valid[1], "components": [{
+                "type": "status", "id": "state-0", "text": "Other", "level": "info",
+            }],
+        }]
+        invalid_definition = [valid[0], {"slot": "studio.actions", "components": []}]
+        cases = [
+            [],
+            valid + [self.definition("chat.toolbar")],
+            [valid[0], "not a definition"],
+            duplicate_slot,
+            duplicate_id,
+            invalid_definition,
+        ]
+        for definitions in cases:
+            with self.subTest(definitions=definitions):
+                self.assertIsNone(
+                    PluginManager._validate_ui_definitions(plugin, definitions)
+                )
+
+    def test_invalid_multi_slot_plugin_does_not_hide_other_plugins(self):
+        duplicate = [
+            self.definition("chat.toolbar", components=[{
+                "type": "status", "id": "same", "text": "One", "level": "info",
+            }]),
+            self.definition("settings.plugins", components=[{
+                "type": "status", "id": "same", "text": "Two", "level": "info",
+            }]),
+        ]
+        invalid = self.plugin("invalid", 10, duplicate)
+        valid = self.plugin("valid", 20, self.definition())
+        manager = self.manager([valid, invalid])
+
+        with self.assertLogs("rp-standalone", level="WARNING"):
+            definitions = manager.collect_ui_definitions()
+
+        self.assertEqual([item["name"] for item in definitions], ["valid"])
+
+    async def test_dispatch_aggregates_actions_and_statuses_across_slots(self):
+        definitions = [
+            self.definition("chat.toolbar", components=[
+                {"type": "button", "id": "disabled-run", "label": "Run",
+                 "action": "shared", "disabled": True},
+            ]),
+            self.definition("settings.plugins", components=[
+                {"type": "status", "id": "remote-state", "text": "Ready", "level": "info"},
+                {"type": "button", "id": "enabled-run", "label": "Run",
+                 "action": "shared", "disabled": False},
+            ]),
+        ]
+        result = {"status": "ok", "message": "done", "data": {"ui_updates": [{
+            "component_id": "remote-state", "text": "Connected", "level": "success",
+        }]}}
+        manager = self.manager([
+            self.plugin("demo", definition=definitions, result=result)
+        ])
+
+        actual = await manager.dispatch_ui_action("demo", "shared", {})
+
+        self.assertEqual(actual["status"], "ok")
+        self.assertEqual(actual["data"]["ui_updates"][0]["component_id"], "remote-state")
+
+        all_disabled = [definitions[0], {
+            **definitions[1],
+            "components": [
+                definitions[1]["components"][0],
+                {"type": "button", "id": "other-disabled", "label": "Run",
+                 "action": "shared", "disabled": True},
+            ],
+        }]
+        disabled_manager = self.manager([
+            self.plugin("disabled", definition=all_disabled)
+        ])
+        with self.assertRaises(KeyError):
+            await disabled_manager.dispatch_ui_action("disabled", "shared", {})
+
     def test_accepts_all_four_ui_slots(self):
         plugin = self.plugin("demo", definition=self.definition())
         slots = [
@@ -563,11 +683,16 @@ class PluginUiTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('button.textContent = component.label', script)
         self.assertIn('status.textContent = component.text', script)
         self.assertIn('separator.setAttribute("role", "separator")', script)
-        self.assertIn('payload.version !== 4', script)
+        self.assertIn('payload.version !== 5', script)
+        self.assertIn('const groups = new Map()', script)
+        self.assertIn('if (!groups.has(pluginName)) groups.set(pluginName, [])', script)
+        self.assertIn('function validPluginDefinitions(definitions)', script)
+        self.assertIn('collectValidDefinitions(payload.plugins)', script)
         self.assertIn('function normalizeUiUpdates(updates)', script)
         self.assertIn('function applyUiUpdates(pluginName, updates)', script)
         self.assertIn('status.textContent = update.text', script)
         self.assertIn('status.classList.remove(...STATUS_CLASSES)', script)
+        self.assertIn('button.disabled = component.disabled', script)
         self.assertIn('button.addEventListener("click"', script)
         self.assertIn("slot.replaceChildren()", script)
         self.assertIn("generation !== initGeneration", script)

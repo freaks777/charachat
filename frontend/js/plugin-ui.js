@@ -147,6 +147,57 @@
     }
   }
 
+  function validDefinition(definition) {
+    if (!definition || typeof definition !== "object" || Array.isArray(definition)) return false;
+    const keys = Object.keys(definition);
+    return keys.length === 3
+      && keys.every(key => ["name", "slot", "components"].includes(key))
+      && NAME_RE.test(definition.name || "")
+      && Object.hasOwn(SLOT_IDS, definition.slot)
+      && Array.isArray(definition.components)
+      && definition.components.length >= 1
+      && definition.components.length <= 10
+      && definition.components.every(validComponent);
+  }
+
+  function validPluginDefinitions(definitions) {
+    if (!Array.isArray(definitions) || definitions.length < 1 || definitions.length > 4) {
+      return false;
+    }
+    const slots = new Set();
+    const componentIds = new Set();
+    let componentCount = 0;
+    for (const definition of definitions) {
+      if (!validDefinition(definition) || slots.has(definition.slot)) return false;
+      slots.add(definition.slot);
+      for (const component of definition.components) {
+        if (componentIds.has(component.id)) return false;
+        componentIds.add(component.id);
+        componentCount += 1;
+        if (componentCount > 40) return false;
+      }
+    }
+    return true;
+  }
+
+  function collectValidDefinitions(definitions) {
+    const groups = new Map();
+    for (const definition of definitions) {
+      if (!definition || typeof definition !== "object" || Array.isArray(definition)) continue;
+      const pluginName = definition.name;
+      if (typeof pluginName !== "string" || !NAME_RE.test(pluginName)) continue;
+      if (!groups.has(pluginName)) groups.set(pluginName, []);
+      groups.get(pluginName).push(definition);
+    }
+    const valid = [];
+    for (const definitionsForPlugin of groups.values()) {
+      if (validPluginDefinitions(definitionsForPlugin)) {
+        valid.push(...definitionsForPlugin);
+      }
+    }
+    return valid;
+  }
+
   function renderDefinition(definition) {
     if (!definition || typeof definition !== "object" || Array.isArray(definition)) return;
     const pluginName = definition.name;
@@ -204,10 +255,10 @@
       if (!response.ok) throw new Error("plugin UI HTTP " + response.status);
       const payload = await response.json();
       if (generation !== initGeneration) return;
-      if (!payload || payload.version !== 4 || !Array.isArray(payload.plugins)) {
+      if (!payload || payload.version !== 5 || !Array.isArray(payload.plugins)) {
         throw new Error("invalid plugin UI payload");
       }
-      for (const definition of payload.plugins) {
+      for (const definition of collectValidDefinitions(payload.plugins)) {
         renderDefinition(definition);
       }
     } catch (error) {

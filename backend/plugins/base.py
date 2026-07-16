@@ -22,8 +22,8 @@ class PluginBase(ABC):
         """data を処理し、必要なら書き換えて返す。書き換え不要なら None を返す。"""
         ...
 
-    def get_ui_slot(self) -> dict | None:
-        """フロントに追加する構造化UI定義を返す。なければNone。"""
+    def get_ui_slot(self) -> dict | list[dict] | None:
+        """フロントに追加する単一または複数の構造化UI定義を返す。"""
         return None
 
     async def handle_ui_action(

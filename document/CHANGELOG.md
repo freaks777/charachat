@@ -1139,3 +1139,18 @@ DOM挿入監査で確認したF1〜F3を修正。
 **変更ファイル**: `backend/plugins/plugin_manager.py`, `backend/main.py`, `frontend/js/plugin-ui.js`, `tests/test_regressions.py`, `document/RPスタンドアロンアプリ_設計書.md`, `document/CHANGELOG.md`, `document/backlog.md`
 
 **確認結果**: 回帰テスト46件成功、Python・JavaScript構文チェック成功、`git diff --check` 問題なし
+
+### 22.20 動的プラグインUI拡張 Phase 4（2026-07-16）
+
+- UIスキーマをversion 5へ更新し、`get_ui_slot()` が従来の単一dictに加えて最大4件のlistを返せるようにした
+- 1定義最大10件・合計最大40コンポーネント、slot重複禁止、component IDの全スロット一意性をplugin単位で検証
+- 1件でも不正な定義があればplugin全体を拒否し、他pluginはpriority順で継続するall-or-nothing方式を採用
+- 同一pluginの全定義から有効button actionとstatus IDを集約し、2番目以降のslotでもaction実行・status更新を可能にした
+- 複数slotで同じaction名を共有可能とし、1つ以上の有効buttonがあれば公開、すべてdisabledなら拒否する仕様にした
+- フロントは受信定義をplugin名のMapでグループ化し、非連続な定義もplugin単位で事前検証してから描画
+- 不正pluginの部分描画を防ぎつつ他pluginを継続し、既存のDOM API・textContent・固定CSSクラス制約を維持
+- 入力フォームは後続タスクとして維持
+
+**変更ファイル**: `backend/plugins/base.py`, `backend/plugins/plugin_manager.py`, `backend/main.py`, `frontend/js/plugin-ui.js`, `tests/test_regressions.py`, `document/RPスタンドアロンアプリ_設計書.md`, `document/CHANGELOG.md`, `document/backlog.md`
+
+**確認結果**: 回帰テスト50件成功、Python・JavaScript構文チェック成功、`git diff --check` 問題なし

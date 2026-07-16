@@ -215,19 +215,49 @@ class PluginManager:
             "components": normalized,
         }
 
+    @classmethod
+    def _validate_ui_definitions(cls, plugin: PluginBase, raw) -> list[dict] | None:
+        """Validate one plugin's single or multi-slot definitions atomically."""
+        if isinstance(raw, dict):
+            raw_definitions = [raw]
+        elif isinstance(raw, list) and 1 <= len(raw) <= len(UI_SLOTS):
+            raw_definitions = raw
+        else:
+            return None
+
+        normalized = []
+        slots = set()
+        component_ids = set()
+        component_count = 0
+        for raw_definition in raw_definitions:
+            definition = cls._validate_ui_definition(plugin, raw_definition)
+            if definition is None or definition["slot"] in slots:
+                return None
+            slots.add(definition["slot"])
+            for component in definition["components"]:
+                component_id = component["id"]
+                if component_id in component_ids:
+                    return None
+                component_ids.add(component_id)
+                component_count += 1
+                if component_count > 40:
+                    return None
+            normalized.append(definition)
+        return normalized
+
     def collect_ui_definitions(self) -> list[dict]:
-        """有効プラグインの妥当なUI定義だけをpriority順で返す。"""
+        """Return valid UI definitions in plugin priority and declared slot order."""
         definitions = []
         for plugin in self.plugins:
             try:
                 raw = plugin.get_ui_slot()
                 if raw is None:
                     continue
-                validated = self._validate_ui_definition(plugin, raw)
+                validated = self._validate_ui_definitions(plugin, raw)
                 if validated is None:
                     logger.warning("plugin UI definition rejected: %s", plugin.name)
                     continue
-                definitions.append(validated)
+                definitions.extend(validated)
             except Exception:
                 logger.exception("plugin UI definition failed: %s", plugin.name)
         return definitions
@@ -287,23 +317,24 @@ class PluginManager:
         if not isinstance(payload, dict):
             raise ValueError("payload must be an object")
 
-        definition = next(
-            (item for item in self.collect_ui_definitions()
-             if item["name"] == plugin_name),
-            None,
-        )
+        definitions = [
+            item for item in self.collect_ui_definitions()
+            if item["name"] == plugin_name
+        ]
         allowed = {
             component["action"]
+            for definition in definitions
             for component in definition["components"]
             if component["type"] == "button" and not component["disabled"]
-        } if definition else set()
+        }
         if action not in allowed:
             raise KeyError("plugin action not found")
         status_ids = {
             component["id"]
+            for definition in definitions
             for component in definition["components"]
             if component["type"] == "status"
-        } if definition else set()
+        }
 
         plugin = self.get(plugin_name)
         if plugin is None:
