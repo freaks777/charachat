@@ -1184,3 +1184,19 @@ DOM挿入監査で確認したF1〜F3を修正。
 **変更ファイル**: `backend/plugins/_template/__init__.py`, `backend/plugins/_template/plugin.py`, `backend/plugins/_template/README.md`, `document/plugin_development.md`, `document/README.md`, `tests/test_regressions.py`, `document/RPスタンドアロンアプリ_設計書.md`, `document/CHANGELOG.md`, `document/backlog.md`
 
 **確認結果**: 回帰テスト58件成功、ガイド・雛形テスト2件成功、雛形Python構文チェック成功、`git diff --check` 問題なし
+
+### 22.23 動的プラグインUI拡張 Phase 6（2026-07-16）
+
+- UIスキーマをversion 7へ更新し、文字列form fieldへ `textarea` と `select` を追加
+- fieldの `type` 省略時は `text` として正規化し、version 6プラグインとの互換性を維持
+- text/textarea/selectを型別allowlistで検証し、型固有でない属性や未知field型を拒否
+- select optionsを1〜50件、`{value, label}` の2属性だけに限定し、value重複、長さ、初期値を検証
+- select送信値を公開済みoption valueとバックエンドで照合し、任意値をhandler呼出前に拒否
+- フロントはDOM APIだけでtextarea/select/optionを構築し、option labelは `textContent` で設定
+- 既存formの送信中無効化・復帰、feedback、CustomEvent、status更新処理を3field型で共通利用
+- コピー用雛形へselect例を追加し、開発ガイド・設計書・backlogをversion 7へ同期
+- checkbox / number、secrets連携、複数選択select、field単位disabledは後続タスクとして維持
+
+**変更ファイル**: `backend/plugins/plugin_manager.py`, `backend/main.py`, `backend/plugins/_template/plugin.py`, `frontend/js/plugin-ui.js`, `frontend/css/style.css`, `tests/test_regressions.py`, `document/plugin_development.md`, `document/RPスタンドアロンアプリ_設計書.md`, `document/CHANGELOG.md`, `document/backlog.md`
+
+**確認結果**: 回帰テスト61件成功、Plugin UIテスト27件成功、ガイド・雛形テスト2件成功、Python・JavaScript構文チェック成功、`git diff --check` 問題なし

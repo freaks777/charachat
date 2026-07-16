@@ -1,6 +1,6 @@
 # プラグイン開発ガイド
 
-> 現行UIスキーマ: version 6<br>
+> 現行UIスキーマ: version 7<br>
 > アーキテクチャとセキュリティの正本は `RPスタンドアロンアプリ_設計書.md`。この文書は実装手順とコード例を扱う。
 
 ## 1. 信頼境界
@@ -124,7 +124,7 @@ priorityは小さい順に実行され、同値では設定上のロード順を
 
 `critical=True` は失敗後の処理継続が危険な場合だけ使う。例は外部送信前の機密値保護。通常の補助機能はfalseにする。
 
-## 8. 動的UI version 6
+## 8. 動的UI version 7
 
 `get_ui_slot()` は単一dict、最大4件のlist、またはNoneを返す。
 
@@ -181,23 +181,48 @@ status levelは `info` / `success` / `warning` / `error`。button同士はaction
     "action": "save_settings",
     "submit_label": "Save",
     "disabled": False,
-    "fields": [{
-        "id": "display_name",
-        "label": "Display name",
-        "required": True,
-        "max_length": 80,
-        "placeholder": "Plugin name",
-        "value": "",
-    }],
+    "fields": [
+        {
+            # type省略時はtextとして扱う（version 6互換）
+            "id": "display_name",
+            "label": "Display name",
+            "required": True,
+            "max_length": 80,
+            "placeholder": "Plugin name",
+            "value": "",
+        },
+        {
+            "type": "textarea",
+            "id": "notes",
+            "label": "Notes",
+            "required": False,
+            "max_length": 2000,
+            "placeholder": "Optional notes",
+            "value": "",
+        },
+        {
+            "type": "select",
+            "id": "mode",
+            "label": "Mode",
+            "required": True,
+            "options": [
+                {"value": "safe", "label": "Safe"},
+                {"value": "fast", "label": "Fast"},
+            ],
+            "value": "safe",
+        },
+    ],
 }
 ```
 
-- fieldsは1〜10件
-- field IDはform内で一意
-- max_lengthは1〜2000
-- form actionはplugin内で一意
-- button actionとの衝突禁止
-- password、file、textarea、select、checkbox、numberは未対応
+- fieldsは1〜10件、field IDはform内で一意
+- `type` は `text` / `textarea` / `select`。省略時は `text`
+- text/textareaのmax_lengthは1〜2000、placeholderは100文字以下
+- selectのoptionsは1〜50件、各optionは `{value, label}` のみ
+- option valueは200文字以下かつfield内で一意、labelは1〜80文字
+- selectの初期値と送信値は定義済みoption valueに限定
+- form actionはplugin内で一意、button actionとの衝突禁止
+- password、file、checkbox、number、複数選択selectは未対応
 
 送信payloadは固定の `{form_id, values}` 形式:
 
@@ -208,7 +233,7 @@ status levelは `info` / `success` / `warning` / `error`。button同士はaction
 }
 ```
 
-コアは構造、field集合、文字列型、required、max_lengthを検証する。pluginは値の意味、許可範囲、identifier、path等を追加検証する。
+コアは構造、field集合、文字列型、required、max_length、およびselectのoption一致を検証する。pluginは値の意味、許可範囲、identifier、path等を追加検証する。
 
 ## 11. UI action
 

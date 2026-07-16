@@ -25,7 +25,10 @@ UI_STATUS_FIELDS = {"type", "id", "text", "level"}
 UI_STATUS_LEVELS = {"info", "success", "warning", "error"}
 UI_UPDATE_FIELDS = {"component_id", "text", "level"}
 UI_FORM_FIELDS = {"type", "id", "action", "submit_label", "disabled", "fields"}
-UI_TEXT_FIELD_FIELDS = {"id", "label", "required", "max_length", "placeholder", "value"}
+UI_TEXT_FIELD_TYPES = {"text", "textarea"}
+UI_TEXT_FIELD_FIELDS = {"type", "id", "label", "required", "max_length", "placeholder", "value"}
+UI_SELECT_FIELD_FIELDS = {"type", "id", "label", "required", "options", "value"}
+UI_SELECT_OPTION_FIELDS = {"value", "label"}
 
 
 class PluginManager:
@@ -212,40 +215,88 @@ class PluginManager:
                 for field in fields:
                     if not isinstance(field, dict):
                         return None
-                    if not {"id", "label", "required", "max_length"}.issubset(field):
-                        return None
-                    if not set(field).issubset(UI_TEXT_FIELD_FIELDS):
-                        return None
+                    field_type = field.get("type", "text")
                     field_id = field.get("id")
                     label = field.get("label")
                     required = field.get("required")
-                    max_length = field.get("max_length")
-                    placeholder = field.get("placeholder", "")
-                    value = field.get("value", "")
                     if isinstance(label, str):
                         label = label.strip()
                     if (
-                        not isinstance(field_id, str)
+                        field_type not in UI_TEXT_FIELD_TYPES | {"select"}
+                        or not isinstance(field_id, str)
                         or not UI_NAME_RE.fullmatch(field_id)
                         or field_id in field_ids
                         or not isinstance(label, str)
                         or not 1 <= len(label) <= 80
                         or not isinstance(required, bool)
-                        or type(max_length) is not int
-                        or not 1 <= max_length <= 2000
-                        or not isinstance(placeholder, str)
-                        or len(placeholder) > 100
-                        or not isinstance(value, str)
-                        or len(value) > max_length
                     ):
                         return None
                     field_ids.add(field_id)
+                    if field_type in UI_TEXT_FIELD_TYPES:
+                        if not {"id", "label", "required", "max_length"}.issubset(field):
+                            return None
+                        if not set(field).issubset(UI_TEXT_FIELD_FIELDS):
+                            return None
+                        max_length = field.get("max_length")
+                        placeholder = field.get("placeholder", "")
+                        value = field.get("value", "")
+                        if (
+                            type(max_length) is not int
+                            or not 1 <= max_length <= 2000
+                            or not isinstance(placeholder, str)
+                            or len(placeholder) > 100
+                            or not isinstance(value, str)
+                            or len(value) > max_length
+                        ):
+                            return None
+                        normalized_fields.append({
+                            "type": field_type,
+                            "id": field_id,
+                            "label": label,
+                            "required": required,
+                            "max_length": max_length,
+                            "placeholder": placeholder,
+                            "value": value,
+                        })
+                        continue
+                    if not {"id", "label", "required", "options"}.issubset(field):
+                        return None
+                    if not set(field).issubset(UI_SELECT_FIELD_FIELDS):
+                        return None
+                    options = field.get("options")
+                    if not isinstance(options, list) or not 1 <= len(options) <= 50:
+                        return None
+                    normalized_options = []
+                    option_values = set()
+                    for option in options:
+                        if not isinstance(option, dict) or set(option) != UI_SELECT_OPTION_FIELDS:
+                            return None
+                        option_value = option.get("value")
+                        option_label = option.get("label")
+                        if isinstance(option_label, str):
+                            option_label = option_label.strip()
+                        if (
+                            not isinstance(option_value, str)
+                            or len(option_value) > 200
+                            or option_value in option_values
+                            or not isinstance(option_label, str)
+                            or not 1 <= len(option_label) <= 80
+                        ):
+                            return None
+                        option_values.add(option_value)
+                        normalized_options.append({
+                            "value": option_value,
+                            "label": option_label,
+                        })
+                    value = field.get("value", normalized_options[0]["value"])
+                    if not isinstance(value, str) or value not in option_values:
+                        return None
                     normalized_fields.append({
+                        "type": "select",
                         "id": field_id,
                         "label": label,
                         "required": required,
-                        "max_length": max_length,
-                        "placeholder": placeholder,
+                        "options": normalized_options,
                         "value": value,
                     })
                 normalized.append({
@@ -401,11 +452,12 @@ class PluginManager:
         normalized_values = {}
         for field in fields:
             value = values.get(field["id"])
-            if (
-                not isinstance(value, str)
-                or len(value) > field["max_length"]
-                or (field["required"] and value == "")
-            ):
+            if not isinstance(value, str) or (field["required"] and value == ""):
+                return None
+            if field["type"] == "select":
+                if value not in {option["value"] for option in field["options"]}:
+                    return None
+            elif len(value) > field["max_length"]:
                 return None
             normalized_values[field["id"]] = value
         return {"form_id": form["id"], "values": normalized_values}

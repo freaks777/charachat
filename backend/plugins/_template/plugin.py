@@ -51,14 +51,27 @@ class TemplatePlugin(PluginBase):
                     "action": "save_settings",
                     "submit_label": "Save",
                     "disabled": False,
-                    "fields": [{
-                        "id": "display_name",
-                        "label": "Display name",
-                        "required": True,
-                        "max_length": 80,
-                        "placeholder": "Plugin name",
-                        "value": "",
-                    }],
+                    "fields": [
+                        {
+                            "id": "display_name",
+                            "label": "Display name",
+                            "required": True,
+                            "max_length": 80,
+                            "placeholder": "Plugin name",
+                            "value": "",
+                        },
+                        {
+                            "type": "select",
+                            "id": "mode",
+                            "label": "Mode",
+                            "required": True,
+                            "options": [
+                                {"value": "safe", "label": "Safe"},
+                                {"value": "fast", "label": "Fast"},
+                            ],
+                            "value": "safe",
+                        },
+                    ],
                 }],
             },
         ]

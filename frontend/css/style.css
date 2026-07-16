@@ -1276,7 +1276,9 @@ input.invalid {
   color: var(--text-dim);
   font-size: 11px;
 }
-.plugin-ui-form-field input {
+.plugin-ui-form-field input,
+.plugin-ui-form-field textarea,
+.plugin-ui-form-field select {
   min-width: 140px;
   max-width: 240px;
   padding: 5px 7px;
@@ -1286,7 +1288,13 @@ input.invalid {
   color: var(--text);
   font: inherit;
 }
-.plugin-ui-form-field input:disabled {
+.plugin-ui-form-field textarea {
+  min-height: 64px;
+  resize: vertical;
+}
+.plugin-ui-form-field input:disabled,
+.plugin-ui-form-field textarea:disabled,
+.plugin-ui-form-field select:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }

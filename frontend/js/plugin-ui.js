@@ -68,18 +68,42 @@
       for (const field of component.fields) {
         if (!field || typeof field !== "object" || Array.isArray(field)) return false;
         const fieldKeys = Object.keys(field);
-        if (fieldKeys.length !== 6
-            || !fieldKeys.every(key => [
-              "id", "label", "required", "max_length", "placeholder", "value",
-            ].includes(key))
-            || typeof field.id !== "string" || !NAME_RE.test(field.id)
+        if (typeof field.id !== "string" || !NAME_RE.test(field.id)
             || fieldIds.has(field.id)
             || typeof field.label !== "string" || field.label.length < 1 || field.label.length > 80
             || typeof field.required !== "boolean"
-            || !Number.isInteger(field.max_length)
-            || field.max_length < 1 || field.max_length > 2000
-            || typeof field.placeholder !== "string" || field.placeholder.length > 100
-            || typeof field.value !== "string" || field.value.length > field.max_length) return false;
+            || typeof field.value !== "string") return false;
+        if (field.type === "text" || field.type === "textarea") {
+          if (fieldKeys.length !== 7
+              || !fieldKeys.every(key => [
+                "type", "id", "label", "required", "max_length", "placeholder", "value",
+              ].includes(key))
+              || !Number.isInteger(field.max_length)
+              || field.max_length < 1 || field.max_length > 2000
+              || typeof field.placeholder !== "string" || field.placeholder.length > 100
+              || field.value.length > field.max_length) return false;
+        } else if (field.type === "select") {
+          if (fieldKeys.length !== 6
+              || !fieldKeys.every(key => [
+                "type", "id", "label", "required", "options", "value",
+              ].includes(key))
+              || !Array.isArray(field.options)
+              || field.options.length < 1 || field.options.length > 50) return false;
+          const optionValues = new Set();
+          for (const option of field.options) {
+            if (!option || typeof option !== "object" || Array.isArray(option)
+                || Object.keys(option).length !== 2
+                || !Object.keys(option).every(key => ["value", "label"].includes(key))
+                || typeof option.value !== "string" || option.value.length > 200
+                || optionValues.has(option.value)
+                || typeof option.label !== "string"
+                || option.label.length < 1 || option.label.length > 80) return false;
+            optionValues.add(option.value);
+          }
+          if (!optionValues.has(field.value)) return false;
+        } else {
+          return false;
+        }
         fieldIds.add(field.id);
       }
       return true;
@@ -272,14 +296,30 @@
           label.className = "plugin-ui-form-field";
           const labelText = document.createElement("span");
           labelText.textContent = field.label;
-          const input = document.createElement("input");
-          input.type = "text";
+          let input;
+          if (field.type === "select") {
+            input = document.createElement("select");
+            for (const item of field.options) {
+              const option = document.createElement("option");
+              option.value = item.value;
+              option.textContent = item.label;
+              input.append(option);
+            }
+          } else if (field.type === "textarea") {
+            input = document.createElement("textarea");
+            input.placeholder = field.placeholder;
+            input.maxLength = field.max_length;
+            input.autocomplete = "off";
+          } else {
+            input = document.createElement("input");
+            input.type = "text";
+            input.placeholder = field.placeholder;
+            input.maxLength = field.max_length;
+            input.autocomplete = "off";
+          }
           input.name = field.id;
           input.value = field.value;
-          input.placeholder = field.placeholder;
           input.required = field.required;
-          input.maxLength = field.max_length;
-          input.autocomplete = "off";
           input.disabled = component.disabled;
           label.append(labelText, input);
           form.append(label);
@@ -353,7 +393,7 @@
       if (!response.ok) throw new Error("plugin UI HTTP " + response.status);
       const payload = await response.json();
       if (generation !== initGeneration) return;
-      if (!payload || payload.version !== 6 || !Array.isArray(payload.plugins)) {
+      if (!payload || payload.version !== 7 || !Array.isArray(payload.plugins)) {
         throw new Error("invalid plugin UI payload");
       }
       for (const definition of collectValidDefinitions(payload.plugins)) {

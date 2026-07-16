@@ -407,7 +407,7 @@ class PluginUiTests(unittest.IsolatedAsyncioTestCase):
 
         normalized = PluginManager._validate_ui_definition(plugin, definition)
 
-        self.assertEqual(normalized["components"], [component])
+        self.assertEqual(normalized["components"][0]["fields"][0]["type"], "text")
         boundary_fields = [
             {
                 "id": f"field-{index}", "label": "Field", "required": False,
@@ -419,6 +419,66 @@ class PluginUiTests(unittest.IsolatedAsyncioTestCase):
             self.form_component(fields=boundary_fields)
         ])
         self.assertIsNotNone(PluginManager._validate_ui_definition(plugin, boundary))
+
+    def test_accepts_and_normalizes_textarea_and_select_fields(self):
+        fields = [
+            {
+                "type": "textarea", "id": "notes", "label": "Notes",
+                "required": False, "max_length": 2000,
+                "placeholder": "Details", "value": "Initial",
+            },
+            {
+                "type": "select", "id": "mode", "label": "Mode",
+                "required": True, "options": [
+                    {"value": "safe", "label": "Safe"},
+                    {"value": "fast", "label": "Fast"},
+                ],
+            },
+        ]
+        definition = self.definition(components=[self.form_component(fields=fields)])
+        plugin = self.plugin("demo", definition=definition)
+
+        normalized = PluginManager._validate_ui_definition(plugin, definition)
+
+        actual_fields = normalized["components"][0]["fields"]
+        self.assertEqual(actual_fields[0]["type"], "textarea")
+        self.assertEqual(actual_fields[1]["type"], "select")
+        self.assertEqual(actual_fields[1]["value"], "safe")
+        self.assertEqual(len(actual_fields[1]["options"]), 2)
+
+    def test_rejects_invalid_textarea_and_select_definitions(self):
+        plugin = self.plugin("demo", definition=self.definition())
+        textarea = {
+            "type": "textarea", "id": "notes", "label": "Notes",
+            "required": False, "max_length": 20, "placeholder": "", "value": "",
+        }
+        select = {
+            "type": "select", "id": "mode", "label": "Mode", "required": True,
+            "options": [
+                {"value": "safe", "label": "Safe"},
+                {"value": "fast", "label": "Fast"},
+            ],
+            "value": "safe",
+        }
+        invalid_fields = [
+            {**textarea, "type": "password"},
+            {**textarea, "options": []},
+            {**select, "options": []},
+            {**select, "options": select["options"] * 26},
+            {**select, "options": [select["options"][0]] * 2},
+            {**select, "options": [{"value": "x", "label": ""}]},
+            {**select, "options": [{"value": "x", "label": "X", "extra": True}]},
+            {**select, "value": "missing"},
+            {**select, "max_length": 10},
+        ]
+        for field in invalid_fields:
+            with self.subTest(field=field):
+                definition = self.definition(components=[
+                    self.form_component(fields=[field])
+                ])
+                self.assertIsNone(
+                    PluginManager._validate_ui_definition(plugin, definition)
+                )
 
     def test_rejects_invalid_text_form_definitions(self):
         plugin = self.plugin("demo", definition=self.definition())
@@ -489,6 +549,32 @@ class PluginUiTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result["status"], "ok")
         self.assertEqual(result["data"], payload)
+
+    async def test_validates_select_payload_against_published_options(self):
+        select = {
+            "type": "select", "id": "mode", "label": "Mode", "required": True,
+            "options": [
+                {"value": "safe", "label": "Safe"},
+                {"value": "fast", "label": "Fast"},
+            ],
+            "value": "safe",
+        }
+        form = self.form_component(fields=[select])
+        definition = self.definition(components=[form])
+        manager = self.manager([self.plugin("demo", definition=definition)])
+
+        accepted = await manager.dispatch_ui_action("demo", "search", {
+            "form_id": "search-form", "values": {"mode": "fast"},
+        })
+        self.assertEqual(accepted["data"]["values"]["mode"], "fast")
+
+        rejecting = self.manager([
+            self.plugin("demo", definition=definition, error="action")
+        ])
+        with self.assertRaises(ValueError):
+            await rejecting.dispatch_ui_action("demo", "search", {
+                "form_id": "search-form", "values": {"mode": "injected"},
+            })
 
     async def test_rejects_invalid_form_payload_before_plugin_handler(self):
         form = self.form_component()
@@ -809,6 +895,7 @@ class PluginUiTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertIn('@app.get("/api/plugins/ui")', main_source)
+        self.assertIn('"version": 7', main_source)
         self.assertIn(
             '@app.post("/api/plugins/{plugin_name}/actions/{action}")',
             main_source,
@@ -830,7 +917,7 @@ class PluginUiTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('button.textContent = component.label', script)
         self.assertIn('status.textContent = component.text', script)
         self.assertIn('separator.setAttribute("role", "separator")', script)
-        self.assertIn('payload.version !== 6', script)
+        self.assertIn('payload.version !== 7', script)
         self.assertIn('const groups = new Map()', script)
         self.assertIn('if (!groups.has(pluginName)) groups.set(pluginName, [])', script)
         self.assertIn('function validPluginDefinitions(definitions)', script)
@@ -844,6 +931,9 @@ class PluginUiTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('form.addEventListener("submit"', script)
         self.assertIn('event.preventDefault()', script)
         self.assertIn('input.type = "text"', script)
+        self.assertIn('document.createElement("textarea")', script)
+        self.assertIn('document.createElement("select")', script)
+        self.assertIn('option.textContent = item.label', script)
         self.assertIn('input.autocomplete = "off"', script)
         self.assertIn('input.value = field.value', script)
         self.assertIn('form_id: component.id', script)
@@ -868,7 +958,7 @@ class PluginDevelopmentGuideTests(unittest.IsolatedAsyncioTestCase):
         compile(source, str(template), "exec")
 
         for required in [
-            "version 6",
+            "version 7",
             "chat.input_actions",
             "chat.toolbar",
             "studio.actions",
@@ -907,7 +997,7 @@ class PluginDevelopmentGuideTests(unittest.IsolatedAsyncioTestCase):
 
         saved = await manager.dispatch_ui_action("my_plugin", "save_settings", {
             "form_id": "settings-form",
-            "values": {"display_name": "Example"},
+            "values": {"display_name": "Example", "mode": "safe"},
         })
         self.assertEqual(saved["status"], "ok")
 
