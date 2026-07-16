@@ -28,6 +28,9 @@ from core.persona_manager import PersonaManager
 from plugins.base import PluginBase
 from plugins.plugin_manager import PluginManager
 from plugins.memory.plugin import (
+    MEMORY_KIND_LEGACY,
+    MEMORY_KIND_PERSONA_BASE,
+    MEMORY_KIND_SESSION_FACT,
     MemoryPlugin,
     deduplicate_facts,
     fact_id,
@@ -1382,6 +1385,7 @@ class MemoryDeduplicationTests(unittest.IsolatedAsyncioTestCase):
             where={"$and": [
                 {"persona_id": "persona"},
                 {"session_id": "session"},
+                {"kind": MEMORY_KIND_SESSION_FACT},
             ]},
             include=["documents"],
         )
@@ -1393,6 +1397,7 @@ class MemoryDeduplicationTests(unittest.IsolatedAsyncioTestCase):
             kwargs["ids"],
             [fact_id("persona", "session", "ユーザーは珈琲が好きである")],
         )
+        self.assertEqual(kwargs["metadatas"][0]["kind"], MEMORY_KIND_SESSION_FACT)
 
     async def test_all_duplicates_skip_embedding_and_upsert(self):
         collection = mock.MagicMock()
@@ -1432,6 +1437,105 @@ class MemoryDeduplicationTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(stored, 1)
         collection.upsert.assert_called_once()
+
+    async def test_store_facts_requires_session_identity(self):
+        plugin = MemoryPlugin()
+        plugin._collection = mock.MagicMock()
+        with self.assertLogs("rp-standalone", level="ERROR"):
+            self.assertEqual(
+                await plugin._store_facts(["long enough fact"], "persona", ""),
+                0,
+            )
+        plugin._collection.get.assert_not_called()
+
+    async def test_stats_classifies_kinds_and_counts_orphans_without_documents(self):
+        collection = mock.MagicMock()
+        collection.get.return_value = {
+            "ids": ["session-ok", "session-orphan", "persona", "old"],
+            "metadatas": [
+                {"persona_id": "p", "session_id": "s1", "kind": MEMORY_KIND_SESSION_FACT},
+                {"persona_id": "p", "session_id": "gone", "kind": MEMORY_KIND_SESSION_FACT},
+                {"persona_id": "p", "kind": MEMORY_KIND_PERSONA_BASE},
+                {"persona_id": "p"},
+            ],
+        }
+        plugin = MemoryPlugin()
+        plugin._collection = collection
+
+        stats = await plugin.stats({("p", "s1")})
+
+        self.assertEqual(stats["total"], 4)
+        self.assertEqual(stats["by_kind"], {
+            MEMORY_KIND_SESSION_FACT: 2,
+            MEMORY_KIND_PERSONA_BASE: 1,
+            MEMORY_KIND_LEGACY: 1,
+        })
+        self.assertEqual(stats["orphan_session_facts"], 1)
+        collection.get.assert_called_once_with(include=["metadatas"])
+
+    async def test_orphan_preview_and_deletes_use_metadata_only(self):
+        collection = mock.MagicMock()
+        collection.get.side_effect = [
+            {
+                "ids": ["ok", "orphan"],
+                "metadatas": [
+                    {"persona_id": "p", "session_id": "s1", "kind": MEMORY_KIND_SESSION_FACT},
+                    {"persona_id": "p", "session_id": "gone", "kind": MEMORY_KIND_SESSION_FACT},
+                ],
+            },
+            {"ids": ["orphan"], "metadatas": [{}]},
+            {"ids": ["base", "fact"], "metadatas": [{}, {}]},
+        ]
+        plugin = MemoryPlugin()
+        plugin._collection = collection
+
+        preview = await plugin.preview_orphans({("p", "s1")})
+        deleted_session = await plugin.delete_session("p", "gone")
+        deleted_persona = await plugin.delete_persona("p")
+
+        self.assertEqual(preview, [{"id": "orphan", "persona_id": "p", "session_id": "gone"}])
+        self.assertEqual(deleted_session, 1)
+        self.assertEqual(deleted_persona, 2)
+        self.assertEqual(collection.delete.call_args_list, [
+            mock.call(ids=["orphan"]),
+            mock.call(ids=["base", "fact"]),
+        ])
+        for call in collection.get.call_args_list:
+            self.assertEqual(call.kwargs["include"], ["metadatas"])
+
+    async def test_memory_queries_only_session_facts(self):
+        collection = mock.MagicMock()
+        collection.query.return_value = {"documents": [[]]}
+        embedding = mock.MagicMock()
+        embedding.encode_query.return_value = [0.1, 0.2]
+        plugin = MemoryPlugin()
+        plugin._collection = collection
+        plugin._embedding_provider = embedding
+        ctx = mock.MagicMock()
+        ctx.user_input = "long enough query"
+        ctx.persona_id = "p"
+        ctx.history.session_id = "s1"
+
+        ctx.memory_scope = "session"
+        await plugin._on_build_context([], ctx)
+        self.assertEqual(collection.query.call_args.kwargs["where"], {"$and": [
+            {"persona_id": "p"},
+            {"session_id": "s1"},
+            {"kind": MEMORY_KIND_SESSION_FACT},
+        ]})
+
+        ctx.memory_scope = "persona"
+        await plugin._on_build_context([], ctx)
+        self.assertEqual(collection.query.call_args.kwargs["where"], {"$and": [
+            {"persona_id": "p"},
+            {"kind": MEMORY_KIND_SESSION_FACT},
+        ]})
+
+    def test_memory_management_endpoints_are_read_only(self):
+        source = (ROOT / "backend" / "main.py").read_text(encoding="utf-8")
+        self.assertIn('@app.get("/api/memory/stats")', source)
+        self.assertIn('@app.get("/api/memory/orphans")', source)
+        self.assertNotIn('@app.delete("/api/memory/', source)
 
 
 class SecretsTests(unittest.TestCase):

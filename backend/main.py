@@ -1496,6 +1496,57 @@ async def list_sessions():
     return {"sessions": sessions}
 
 
+def _valid_memory_sessions() -> set[tuple[str, str]]:
+    """Return (persona_id, session_id) pairs from canonical conversation files."""
+    sessions_dir = BASE_DIR.parent / "sessions"
+    valid = set()
+    if not sessions_dir.exists():
+        return valid
+    for persona_dir in sessions_dir.iterdir():
+        if not persona_dir.is_dir():
+            continue
+        for path in persona_dir.glob("*.jsonl"):
+            if re.fullmatch(r"\d{4}-\d{2}-\d{2}_\d{8}\.jsonl", path.name):
+                valid.add((persona_dir.name, path.stem.split("_", 1)[1]))
+    return valid
+
+
+def _memory_management_plugin():
+    if not plugin_manager.has("memory"):
+        return None
+    plugin = plugin_manager.get("memory")
+    return plugin if getattr(plugin, "_collection", None) is not None else None
+
+
+@app.get("/api/memory/stats")
+async def memory_stats():
+    """Return metadata-only Memory counts."""
+    from fastapi.responses import JSONResponse
+    plugin = _memory_management_plugin()
+    if plugin is None:
+        return JSONResponse(status_code=503, content={"error": "memory_unavailable"})
+    try:
+        return await plugin.stats(_valid_memory_sessions())
+    except Exception as e:
+        logger.error("memory stats failed: %s", e)
+        return JSONResponse(status_code=500, content={"error": "memory_stats_failed"})
+
+
+@app.get("/api/memory/orphans")
+async def memory_orphans():
+    """Preview orphan session facts without returning document contents."""
+    from fastapi.responses import JSONResponse
+    plugin = _memory_management_plugin()
+    if plugin is None:
+        return JSONResponse(status_code=503, content={"error": "memory_unavailable"})
+    try:
+        orphans = await plugin.preview_orphans(_valid_memory_sessions())
+        return {"count": len(orphans), "items": orphans}
+    except Exception as e:
+        logger.error("memory orphan preview failed: %s", e)
+        return JSONResponse(status_code=500, content={"error": "memory_orphans_failed"})
+
+
 @app.delete("/api/sessions/{persona_id}/{date}")
 async def delete_session(persona_id: str, date: str):
     """Delete a session and every sidecar that can make it reappear."""

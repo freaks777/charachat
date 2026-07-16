@@ -31,6 +31,10 @@ LEADING_BULLET_RE = re.compile(
     r"^\s*(?:(?:[・○\-*+])\s*|(?:\d+[.．)]\s*))+"
 )
 
+MEMORY_KIND_SESSION_FACT = "session_fact"
+MEMORY_KIND_PERSONA_BASE = "persona_base"
+MEMORY_KIND_LEGACY = "legacy"
+
 
 def normalize_fact(fact: str) -> str:
     """重複比較用に表記揺れだけを保守的に正規化する。"""
@@ -170,7 +174,10 @@ class MemoryPlugin(PluginBase):
             return
 
         persona_id = ctx.persona_id
-        session_id = getattr(ctx.history, "session_id", "") or "unknown"
+        session_id = getattr(ctx.history, "session_id", "") or ""
+        if not persona_id or not session_id:
+            logger.error("memory: persona_id and session_id are required, skipping save")
+            return
         await self._store_facts(facts, persona_id, session_id)
 
     async def _store_facts(
@@ -180,10 +187,14 @@ class MemoryPlugin(PluginBase):
         session_id: str,
     ) -> int:
         """同一セッションの既存文書を除外し、新規事実だけを保存する。"""
+        if not persona_id or not session_id:
+            logger.error("memory: persona_id and session_id are required")
+            return 0
         existing_documents = []
         where = {"$and": [
             {"persona_id": persona_id},
             {"session_id": session_id},
+            {"kind": MEMORY_KIND_SESSION_FACT},
         ]}
         try:
             result = await asyncio.to_thread(
@@ -217,7 +228,12 @@ class MemoryPlugin(PluginBase):
         ts = time.time()
         ids = [fact_id(persona_id, session_id, fact) for fact in new_facts]
         metadatas = [
-            {"persona_id": persona_id, "session_id": session_id, "timestamp": ts}
+            {
+                "persona_id": persona_id,
+                "session_id": session_id,
+                "kind": MEMORY_KIND_SESSION_FACT,
+                "timestamp": ts,
+            }
             for _ in new_facts
         ]
 
@@ -238,6 +254,86 @@ class MemoryPlugin(PluginBase):
         except Exception as e:
             logger.error("memory: ChromaDB upsert failed (%s)", e)
             return 0
+
+    # ── 管理 ──────────────────────────────────────────────────
+
+    async def _matching_records(self, where: dict | None = None) -> tuple[list[str], list[dict]]:
+        if self._collection is None:
+            return [], []
+        kwargs = {"include": ["metadatas"]}
+        if where is not None:
+            kwargs["where"] = where
+        result = await asyncio.to_thread(self._collection.get, **kwargs)
+        ids = result.get("ids", []) or []
+        metadatas = result.get("metadatas", []) or []
+        return list(ids), list(metadatas)
+
+    async def stats(self, valid_sessions: set[tuple[str, str]] | None = None) -> dict:
+        """Return metadata-only counts. This method never returns documents."""
+        ids, metadatas = await self._matching_records()
+        by_kind = {
+            MEMORY_KIND_SESSION_FACT: 0,
+            MEMORY_KIND_PERSONA_BASE: 0,
+            MEMORY_KIND_LEGACY: 0,
+        }
+        by_persona: dict[str, int] = {}
+        orphan_count = 0
+        valid_sessions = valid_sessions or set()
+        for metadata in metadatas:
+            metadata = metadata if isinstance(metadata, dict) else {}
+            kind = metadata.get("kind")
+            if kind not in (MEMORY_KIND_SESSION_FACT, MEMORY_KIND_PERSONA_BASE):
+                kind = MEMORY_KIND_LEGACY
+            by_kind[kind] += 1
+            persona_id = str(metadata.get("persona_id", ""))
+            if persona_id:
+                by_persona[persona_id] = by_persona.get(persona_id, 0) + 1
+            if kind == MEMORY_KIND_SESSION_FACT:
+                session_id = str(metadata.get("session_id", ""))
+                if not persona_id or not session_id or (persona_id, session_id) not in valid_sessions:
+                    orphan_count += 1
+        return {
+            "total": len(ids),
+            "by_kind": by_kind,
+            "by_persona": by_persona,
+            "orphan_session_facts": orphan_count,
+        }
+
+    async def preview_orphans(self, valid_sessions: set[tuple[str, str]]) -> list[dict]:
+        """Return identifiers and metadata for orphan session facts, never documents."""
+        ids, metadatas = await self._matching_records({"kind": MEMORY_KIND_SESSION_FACT})
+        orphans = []
+        for memory_id, metadata in zip(ids, metadatas):
+            metadata = metadata if isinstance(metadata, dict) else {}
+            persona_id = str(metadata.get("persona_id", ""))
+            session_id = str(metadata.get("session_id", ""))
+            if not persona_id or not session_id or (persona_id, session_id) not in valid_sessions:
+                orphans.append({
+                    "id": memory_id,
+                    "persona_id": persona_id,
+                    "session_id": session_id,
+                })
+        return orphans
+
+    async def _delete_where(self, where: dict) -> int:
+        ids, _ = await self._matching_records(where)
+        if ids:
+            await asyncio.to_thread(self._collection.delete, ids=ids)
+        return len(ids)
+
+    async def delete_session(self, persona_id: str, session_id: str) -> int:
+        if not persona_id or not session_id:
+            raise ValueError("persona_id and session_id are required")
+        return await self._delete_where({"$and": [
+            {"persona_id": persona_id},
+            {"session_id": session_id},
+            {"kind": MEMORY_KIND_SESSION_FACT},
+        ]})
+
+    async def delete_persona(self, persona_id: str) -> int:
+        if not persona_id:
+            raise ValueError("persona_id is required")
+        return await self._delete_where({"persona_id": persona_id})
 
     # ── 検索 ──────────────────────────────────────────────────
 
@@ -266,9 +362,13 @@ class MemoryPlugin(PluginBase):
                 where = {"$and": [
                     {"persona_id": ctx.persona_id},
                     {"session_id": sid},
+                    {"kind": MEMORY_KIND_SESSION_FACT},
                 ]}
             else:
-                where = {"persona_id": ctx.persona_id}
+                where = {"$and": [
+                    {"persona_id": ctx.persona_id},
+                    {"kind": MEMORY_KIND_SESSION_FACT},
+                ]}
             results = await asyncio.to_thread(
                 self._collection.query,
                 query_embeddings=[query_emb],
