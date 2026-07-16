@@ -858,6 +858,60 @@ class PluginUiTests(unittest.IsolatedAsyncioTestCase):
                 self.assertNotIn(attribute, html)
 
 
+class PluginDevelopmentGuideTests(unittest.IsolatedAsyncioTestCase):
+    def test_guide_and_template_match_current_plugin_contract(self):
+        guide = (ROOT / "document" / "plugin_development.md").read_text(
+            encoding="utf-8"
+        )
+        template = ROOT / "backend" / "plugins" / "_template" / "plugin.py"
+        source = template.read_text(encoding="utf-8")
+        compile(source, str(template), "exec")
+
+        for required in [
+            "version 6",
+            "chat.input_actions",
+            "chat.toolbar",
+            "studio.actions",
+            "settings.plugins",
+            "{form_id, values}",
+            "機密値",
+            "backend/config.yaml",
+        ]:
+            with self.subTest(required=required):
+                self.assertIn(required, guide)
+        self.assertIn("class TemplatePlugin(PluginBase):", source)
+        self.assertIn("async def run(self, hook: str, data, ctx):", source)
+        self.assertIn("def get_ui_slot(self) -> dict | list[dict] | None:", source)
+
+        for config_name in ("config.yaml", "config.default.yaml"):
+            config = (ROOT / "backend" / config_name).read_text(encoding="utf-8")
+            self.assertNotIn("- _template", config)
+
+    async def test_template_ui_and_actions_pass_real_manager_validation(self):
+        from plugins._template.plugin import TemplatePlugin
+
+        plugin = TemplatePlugin()
+        definitions = PluginManager._validate_ui_definitions(
+            plugin, plugin.get_ui_slot()
+        )
+        self.assertIsNotNone(definitions)
+        self.assertEqual(len(definitions), 2)
+
+        manager = PluginManager.__new__(PluginManager)
+        manager.plugins = [plugin]
+        refreshed = await manager.dispatch_ui_action("my_plugin", "refresh", {})
+        self.assertEqual(refreshed["status"], "ok")
+        self.assertEqual(
+            refreshed["data"]["ui_updates"][0]["component_id"], "state"
+        )
+
+        saved = await manager.dispatch_ui_action("my_plugin", "save_settings", {
+            "form_id": "settings-form",
+            "values": {"display_name": "Example"},
+        })
+        self.assertEqual(saved["status"], "ok")
+
+
 class ConfigValidationTests(unittest.TestCase):
     def test_valid_settings_are_normalized(self):
         self.assertEqual(

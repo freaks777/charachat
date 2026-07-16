@@ -1171,3 +1171,16 @@ DOM挿入監査で確認したF1〜F3を修正。
 **変更ファイル**: `backend/plugins/plugin_manager.py`, `backend/main.py`, `frontend/js/plugin-ui.js`, `frontend/css/style.css`, `tests/test_regressions.py`, `document/RPスタンドアロンアプリ_設計書.md`, `document/CHANGELOG.md`, `document/backlog.md`
 
 **確認結果**: 回帰テスト56件成功、Plugin UIテスト24件成功、Python・JavaScript構文チェック成功、`git diff --check` 問題なし
+
+### 22.22 プラグイン開発ガイド・雛形整備（2026-07-16）
+
+- 現行実装に基づくプラグイン開発ガイドを追加し、ライフサイクル、hook引数、priority/critical、UI version 6、action応答、テスト手順を集約
+- button / separator / status / form、複数スロット、`ui_updates`、固定form payload `{form_id, values}` の制約を記載
+- 外部入力、HTML、認証情報、ネットワークI/Oを扱う際のtrust boundaryと失敗隔離を明記
+- `backend/plugins/_template/` にコピー用の最小プラグイン、README、package初期化ファイルを追加
+- 雛形は `plugins.enabled` に追加せず、現行runtimeへ影響しない状態を維持
+- ガイド、雛形、実際のPluginManager検証、設定非登録を照合する回帰テストを追加
+
+**変更ファイル**: `backend/plugins/_template/__init__.py`, `backend/plugins/_template/plugin.py`, `backend/plugins/_template/README.md`, `document/plugin_development.md`, `document/README.md`, `tests/test_regressions.py`, `document/RPスタンドアロンアプリ_設計書.md`, `document/CHANGELOG.md`, `document/backlog.md`
+
+**確認結果**: 回帰テスト58件成功、ガイド・雛形テスト2件成功、雛形Python構文チェック成功、`git diff --check` 問題なし

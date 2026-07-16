@@ -918,7 +918,7 @@ CSPは `Content-Security-Policy-Report-Only` で検証を開始する。`default
 ## 8. プラグイン開発
 
 プラグインは `PluginBase` を継承し、`config.yaml` の `plugins.enabled` に追加するだけで有効化される。
-詳細な開発ガイド（hook一覧・UIスロット・サンプルコード）は将来整備予定（`backlog.md` 参照）。
+hook一覧、UIスロット、action API、テスト手順は [`plugin_development.md`](plugin_development.md) を参照する。コピーして利用できる無効状態の雛形は `backend/plugins/_template/` に配置する。
 
 ### 利用可能な hook（7種）
 
