@@ -1580,6 +1580,16 @@ class StateHistoryContractTests(unittest.TestCase):
         self.assertIn('async function refreshStatePanel()', source)
         self.assertGreaterEqual(source.count('await refreshStatePanel();'), 4)
 
+class StateReliabilityContractTests(unittest.TestCase):
+    def test_state_seed_missing_retry_and_overflow_contract(self):
+        source = (ROOT / "backend" / "main.py").read_text(encoding="utf-8")
+        self.assertIn("def _seed_initial_state", source)
+        self.assertIn("開始時の状況", source)
+        self.assertIn("_state_missing_count >= 2", source)
+        self.assertIn("_state_overflow_prompt_pending", source)
+        self.assertIn("STATE update rejected", source)
+        self.assertIn('val == "[解決]"', source)
+
 class FrontendXssTests(unittest.TestCase):
     def test_external_values_use_dom_properties_and_listeners(self):
         js_dir = ROOT / "frontend" / "js"

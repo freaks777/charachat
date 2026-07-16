@@ -324,6 +324,8 @@ plugin_manager = PluginManager(config["plugins"]["enabled"])
 # 同時リクエストによるデータ競合を防止（複数タブ対策）
 _api_lock = asyncio.Lock()
 _cancel_event = asyncio.Event()  # 生成中断用
+_state_missing_count = 0
+_state_overflow_prompt_pending = False
 
 # persona_studio にAPI設定を注入
 if plugin_manager.has("persona_studio"):
@@ -399,6 +401,13 @@ def rebuild_system_prompt():
         "`````` や ```code``` ブロックを含む出力は禁止です。\n"
         "常に自然言語の会話・描写のみを出力してください。"
     )})
+
+    global _state_overflow_prompt_pending
+    if _state_overflow_prompt_pending:
+        system_messages.append({"role": "system", "content": "【状態整理】状態が上限を超えたため前回更新は保存していません。解決済み項目を [解決] で明示し、残りを簡潔に統合して有効なSTATEを出力してください。"})
+        _state_overflow_prompt_pending = False
+    if _state_missing_count >= 2:
+        system_messages.append({"role": "system", "content": "【状態追跡の再確認】前回STATEが連続して欠落しています。現在の状態を保持し、応答末尾に有効な---STATE---と少なくとも1件の - 項目名: 説明 を必ず出力してください。"})
 
     # ---STATE--- 出力指示
     system_messages.append({"role": "system", "content": (
@@ -500,12 +509,12 @@ def _load_session_state() -> str:
 MAX_STATE_LENGTH = 4096
 
 
-def _bounded_state(state: dict) -> dict:
-    if not isinstance(state, dict): return {}
-    bounded = dict(state)
-    while len(json.dumps(bounded, ensure_ascii=False, indent=2)) > MAX_STATE_LENGTH and bounded:
-        bounded.pop(next(reversed(bounded)))
-    return bounded
+def _bounded_state(state: dict) -> dict | None:
+    if not isinstance(state, dict):
+        return {}
+    if len(json.dumps(state, ensure_ascii=False, indent=2)) > MAX_STATE_LENGTH:
+        return None
+    return dict(state)
 
 
 def _write_json_atomic(path: Path, value):
@@ -526,7 +535,7 @@ def _load_state_snapshots() -> list[dict]:
     try:
         for line in path.read_text(encoding="utf-8").splitlines():
             item = json.loads(line); count, state = item.get("message_count"), item.get("state")
-            if type(count) is not int or count <= previous or count % 2 or not isinstance(state, dict): raise ValueError()
+            if type(count) is not int or count < previous or (count == previous and count != 0) or count % 2 or not isinstance(state, dict): raise ValueError()
             snapshots.append({"message_count": count, "state": _bounded_state(state)}); previous = count
     except Exception:
         logger.warning("state history ignored: %s", path.name); return []
@@ -542,6 +551,23 @@ def _save_state_snapshots(snapshots: list[dict]):
     os.replace(temp_path, path)
 
 
+def _extract_opening_seed() -> dict:
+    soul_path = persona_manager.active_dir / "SOUL.md"
+    if not soul_path.exists(): return {}
+    match = re.search(r"^#{1,2}\s*開始時の状況\s*$([\s\S]*?)(?=^#{1,2}\s|\Z)", soul_path.read_text(encoding="utf-8"), re.MULTILINE)
+    content = match.group(1).strip() if match else ""
+    return {"開始時の状況": content} if content else {}
+
+
+def _seed_initial_state() -> dict:
+    if _state_path().exists() or _state_history_path().exists(): return {}
+    state = _extract_opening_seed()
+    if state:
+        _save_session_state(state)
+        _save_state_snapshots([{"message_count": 0, "state": state, "source": "seed"}])
+    return state
+
+
 def _record_state_snapshot(state: dict):
     count = len(history._messages)
     if count == 0 or count % 2: return
@@ -551,6 +577,8 @@ def _record_state_snapshot(state: dict):
 
 
 def _restore_state_for_history(message_count: int, preserve_legacy: bool = False) -> dict:
+    global _state_missing_count
+    _state_missing_count = 0
     path = _state_history_path()
     if not path.exists() and preserve_legacy: return {}
     snapshots = [item for item in _load_state_snapshots() if item["message_count"] <= message_count]
@@ -1578,6 +1606,7 @@ async def start_session(req: StartSessionRequest):
         except ValueError as e:
             return {"error": str(e)}
 
+        _seed_initial_state()
         rebuild_system_prompt()
 
         # セッション状態をファイルに保存
@@ -2259,6 +2288,7 @@ async def chat_sse(data: dict):
             _api_lock.release()
             return JSONResponse(status_code=409, content={"error": "session_mismatch", "detail": err})
 
+        rebuild_system_prompt()
         active_style = persona_manager.get_active_style()
         logger.info("user input  | chars=%d", len(user_text))
 
@@ -2414,6 +2444,7 @@ async def chat_sse(data: dict):
 
                     # 状態をパース（フラットな key: value）
                     state_dict = {}
+                    resolved_keys = set()
                     for line in state_text.split("\n"):
                         line = line.strip()
                         if not line.startswith("- ") or ":" not in line:
@@ -2422,11 +2453,23 @@ async def chat_sse(data: dict):
                         key, _, val = content.partition(":")
                         key = key.strip()
                         val = val.strip()
-                        if key:
+                        if key and val == "[解決]":
+                            resolved_keys.add(key)
+                        elif key:
                             state_dict[key] = val
 
-                    if state_dict:
+                    if state_dict or resolved_keys:
+                        if resolved_keys:
+                            previous_state = json.loads(_state_path().read_text(encoding="utf-8")) if _state_path().exists() else {}
+                            for resolved_key in resolved_keys:
+                                previous_state.pop(resolved_key, None)
+                            previous_state.update(state_dict)
+                            state_dict = previous_state
                         state_dict = _bounded_state(state_dict)
+                        if state_dict is None:
+                            global _state_overflow_prompt_pending
+                            _state_overflow_prompt_pending = True
+                            logger.warning("STATE update rejected: exceeds %d chars", MAX_STATE_LENGTH)
                         # 前回状態を読み込み
                         old_state = {}
                         sp = _state_path()
@@ -2437,15 +2480,21 @@ async def chat_sse(data: dict):
                                 pass
 
                         # 差分計算 → 保存 → フロントへ送信
-                        diff = _diff_state(old_state, state_dict)
-                        _save_session_state(state_dict)
-                        yield f"data: {json.dumps({'type': 'state', 'state': diff}, ensure_ascii=False)}\n\n"
+                        if state_dict is not None:
+                            diff = _diff_state(old_state, state_dict)
+                            _save_session_state(state_dict)
+                            yield f"data: {json.dumps({'type': 'state', 'state': diff}, ensure_ascii=False)}\n\n"
 
                 # 履歴保存（---STATE--- を除いた本文のみ）
                 if history._messages and history._messages[-1]["role"] == "assistant":
                     history._messages[-1]["content"] = display_text
+                global _state_missing_count
                 if state_dict:
+                    _state_missing_count = 0
                     _record_state_snapshot(state_dict)
+                elif not was_cancelled:
+                    _state_missing_count += 1
+                    logger.warning("STATE missing consecutively: %d", _state_missing_count)
                 history.save_turn(force=was_cancelled)
 
                 touch_last_response()
