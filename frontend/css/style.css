@@ -1333,3 +1333,33 @@ input.invalid {
   font-size: 12px;
 }
 .plugin-ui-feedback.is-error { color: var(--error); }
+.plugin-ui-form-field.is-secret {
+  min-width: 140px;
+}
+.plugin-ui-secret-status {
+  min-height: 28px;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+.plugin-ui-secret-dialog {
+  width: min(440px, calc(100vw - 32px));
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.plugin-ui-secret-dialog form,
+.plugin-ui-secret-dialog label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.plugin-ui-secret-dialog textarea {
+  min-height: 96px;
+  padding: 8px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  resize: vertical;
+}

@@ -32,7 +32,9 @@ UI_SELECT_FIELD_FIELDS = {"type", "id", "label", "required", "options", "value"}
 UI_SELECT_OPTION_FIELDS = {"value", "label"}
 UI_CHECKBOX_FIELD_FIELDS = {"type", "id", "label", "required", "value"}
 UI_NUMBER_FIELD_FIELDS = {"type", "id", "label", "required", "min", "max", "value"}
+UI_SECRET_FIELD_FIELDS = {"type", "id", "label", "required", "placeholder"}
 UI_NUMBER_LIMIT = 1e15
+SECRET_REFERENCE_RE = re.compile(r"^\{\{secret:(\d+)\}\}$")
 
 
 def _is_ui_number(value) -> bool:
@@ -57,6 +59,7 @@ class PluginManager:
 
     def __init__(self, enabled_plugins: list[str], plugins_dir: str | Path = None):
         self.plugins: list[PluginBase] = []
+        self._secret_validator = None
         if plugins_dir is None:
             plugins_dir = Path(__file__).resolve().parent
         else:
@@ -147,6 +150,10 @@ class PluginManager:
                 return p
         return None
 
+    def set_secret_validator(self, validator):
+        """Register a reference-only secrets validator without coupling UI schema to a plugin."""
+        self._secret_validator = validator if callable(validator) else None
+
     @staticmethod
     def _validate_ui_definition(plugin: PluginBase, definition) -> dict | None:
         """プラグインUI定義をallowlist方式で検証・正規化する。"""
@@ -235,7 +242,7 @@ class PluginManager:
                     if isinstance(label, str):
                         label = label.strip()
                     if (
-                        field_type not in UI_TEXT_FIELD_TYPES | {"select", "checkbox", "number"}
+                        field_type not in UI_TEXT_FIELD_TYPES | {"select", "checkbox", "number", "secret"}
                         or not isinstance(field_id, str)
                         or not UI_NAME_RE.fullmatch(field_id)
                         or field_id in field_ids
@@ -271,6 +278,20 @@ class PluginManager:
                             "min": minimum,
                             "max": maximum,
                             "value": value,
+                        })
+                        continue
+                    if field_type == "secret":
+                        if not set(field).issubset(UI_SECRET_FIELD_FIELDS):
+                            return None
+                        placeholder = field.get("placeholder", "")
+                        if not isinstance(placeholder, str) or len(placeholder) > 100:
+                            return None
+                        normalized_fields.append({
+                            "type": "secret",
+                            "id": field_id,
+                            "label": label,
+                            "required": required,
+                            "placeholder": placeholder,
                         })
                         continue
                     if field_type == "checkbox":
@@ -490,8 +511,7 @@ class PluginManager:
         normalized_data["ui_updates"] = normalized_updates
         return normalized_data
 
-    @staticmethod
-    def _normalize_ui_form_payload(form: dict, payload: dict) -> dict | None:
+    def _normalize_ui_form_payload(self, form: dict, payload: dict) -> dict | None:
         """Validate a submitted form payload against its published field schema."""
         if set(payload) != {"form_id", "values"}:
             return None
@@ -507,7 +527,19 @@ class PluginManager:
         normalized_values = {}
         for field in fields:
             value = values.get(field["id"])
-            if field["type"] == "number":
+            if field["type"] == "secret":
+                validator = getattr(self, "_secret_validator", None)
+                if value is None:
+                    if field["required"]:
+                        return None
+                elif (
+                    not isinstance(value, str)
+                    or SECRET_REFERENCE_RE.fullmatch(value) is None
+                    or validator is None
+                    or not validator(value)
+                ):
+                    return None
+            elif field["type"] == "number":
                 if value is None:
                     if field["required"]:
                         return None

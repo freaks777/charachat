@@ -1,6 +1,6 @@
 # プラグイン開発ガイド
 
-> 現行UIスキーマ: version 9<br>
+> 現行UIスキーマ: version 10<br>
 > アーキテクチャとセキュリティの正本は `RPスタンドアロンアプリ_設計書.md`。この文書は実装手順とコード例を扱う。
 
 ## 1. 信頼境界
@@ -12,7 +12,7 @@
 - 外部入力、設定、ファイルパス、API応答を信用しない
 - パスは許可されたルート内か検証する
 - APIキーは環境変数または `.env` から読み、設定やログへ書かない
-- 動的UIのtext formへパスワードやAPIキーを入力しない。機密値はsecrets専用UIを使う
+- 動的UIのtext formへパスワードやAPIキーを入力しない。機密値はsecrets専用UIを使う。`secret` fieldは登録済み参照だけをactionへ渡す
 - UI定義へHTML、JavaScript、CSS、イベント属性を含めない
 - 外部通信にはtimeoutを設定する
 - 重い同期I/Oは `asyncio.to_thread()` 等へ逃がす
@@ -124,7 +124,7 @@ priorityは小さい順に実行され、同値では設定上のロード順を
 
 `critical=True` は失敗後の処理継続が危険な場合だけ使う。例は外部送信前の機密値保護。通常の補助機能はfalseにする。
 
-## 8. 動的UI version 9
+## 8. 動的UI version 10
 
 `get_ui_slot()` は単一dict、最大4件のlist、またはNoneを返す。
 
@@ -222,15 +222,16 @@ status levelは `info` / `success` / `warning` / `error`。button同士はaction
 ```
 
 - fieldsは1〜10件、field IDはform内で一意
-- `type` は `text` / `textarea` / `select` / `checkbox` / `number`。省略時は `text`
+- `type` は `text` / `textarea` / `select` / `checkbox` / `number` / `secret`。省略時は `text`
 - text/textareaのmax_lengthは1〜2000、placeholderは100文字以下
 - selectのoptionsは1〜50件、各optionは `{value, label}` のみ
 - option valueは200文字以下かつfield内で一意、labelは1〜80文字
 - selectの初期値と送信値は定義済みoption valueに限定
 - checkboxのvalueと送信値はboolのみ。requiredの場合はTrue必須
 - numberは有限なint/floatまたはnull。±1e15以内でmin/maxを検証
+- secretは `{type, id, label, required, placeholder}` のみ。実値はregister APIだけに送信し、送信値は登録済みの `{{secret:N}}` またはoptionalのnullに限定する
 - form actionはplugin内で一意、button actionとの衝突禁止
-- password、file、複数選択select、checkbox group、number stepは未対応
+- password、file、複数選択select、checkbox group、number stepは未対応。secretの一覧・選択・reveal・実値解決も対象外
 
 送信payloadは固定の `{form_id, values}` 形式:
 
@@ -241,7 +242,7 @@ status levelは `info` / `success` / `warning` / `error`。button同士はaction
 }
 ```
 
-コアは構造、field集合、型、required、max_length、selectのoption一致、checkboxのbool値、およびnumberの有限値・min/maxを検証する。pluginは値の意味、許可範囲、identifier、path等を追加検証する。
+コアは構造、field集合、型、required、max_length、selectのoption一致、checkboxのbool値、numberの有限値・min/max、およびsecret参照の形式と登録済み確認を検証する。plugin handlerへ渡るsecret値は参照文字列だけであり、実値解決は行わない。pluginは値の意味、許可範囲、identifier、path等を追加検証する。
 
 ## 11. UI action
 

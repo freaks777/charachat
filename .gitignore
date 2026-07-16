@@ -3,6 +3,7 @@
 # Local AI agent settings
 /.codex/
 /.agents/
+/AGENTS.md
 
 # Python
 __pycache__/

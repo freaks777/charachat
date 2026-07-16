@@ -8,7 +8,86 @@
     "settings.plugins": "plugin-slot-settings-plugins",
   });
   const NAME_RE = /^[a-zA-Z0-9_-]{1,64}$/;
+  const SECRET_REFERENCE_RE = /^\{\{secret:\d+\}\}$/;
   let initGeneration = 0;
+  let secretDialog = null;
+  let secretDialogValue = null;
+  let secretDialogTarget = null;
+
+  function localText(key, fallback) {
+    return typeof t === "function" ? t(key) : fallback;
+  }
+
+  function clearSecretDialog() {
+    if (secretDialogValue) secretDialogValue.value = "";
+    secretDialogTarget = null;
+  }
+
+  function ensureSecretDialog() {
+    if (secretDialog) return secretDialog;
+    secretDialog = document.createElement("dialog");
+    secretDialog.className = "plugin-ui-secret-dialog";
+    const form = document.createElement("form");
+    const title = document.createElement("h3");
+    title.textContent = localText("secretDialogTitle", "Register confidential value");
+    const label = document.createElement("label");
+    const labelText = document.createElement("span");
+    labelText.textContent = localText("secretValue", "Confidential value");
+    secretDialogValue = document.createElement("textarea");
+    secretDialogValue.maxLength = 10000;
+    secretDialogValue.required = true;
+    secretDialogValue.autocomplete = "off";
+    label.append(labelText, secretDialogValue);
+    const actions = document.createElement("div");
+    actions.className = "secret-dialog-actions";
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.textContent = localText("secretCancel", "Cancel");
+    cancel.addEventListener("click", () => secretDialog.close());
+    const submit = document.createElement("button");
+    submit.type = "submit";
+    submit.textContent = localText("secretInsert", "Register");
+    actions.append(cancel, submit);
+    form.append(title, label, actions);
+    form.addEventListener("submit", async event => {
+      event.preventDefault();
+      const target = secretDialogTarget;
+      const value = secretDialogValue.value.trim();
+      if (!target || !value) return;
+      submit.disabled = true;
+      try {
+        const response = await fetch("/api/secrets/register", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({label: target.label, value}),
+        });
+        const result = await response.json();
+        if (!response.ok || !SECRET_REFERENCE_RE.test(result.placeholder || "")) {
+          throw new Error("secret registration failed");
+        }
+        target.input.value = result.placeholder;
+        target.status.textContent = "●●●●●";
+        target.button.textContent = localText("secretInsert", "Register");
+        secretDialog.close();
+      } catch (error) {
+        showFeedback(localText("secretRegisterError", "Could not register confidential value"), true);
+      } finally {
+        secretDialogValue.value = "";
+        submit.disabled = false;
+      }
+    });
+    secretDialog.addEventListener("close", clearSecretDialog);
+    secretDialog.append(form);
+    document.body.append(secretDialog);
+    return secretDialog;
+  }
+
+  function openSecretDialog(target) {
+    secretDialogTarget = target;
+    const dialog = ensureSecretDialog();
+    dialog.showModal();
+    secretDialogValue.focus();
+  }
 
   function slots() {
     return Object.values(SLOT_IDS)
@@ -116,6 +195,10 @@
           if (field.value !== null
               && ((field.min !== null && field.value < field.min)
                   || (field.max !== null && field.value > field.max))) return false;
+        } else if (field.type === "secret") {
+          if (fieldKeys.length !== 5
+              || !fieldKeys.every(key => ["type", "id", "label", "required", "placeholder"].includes(key))
+              || typeof field.placeholder !== "string" || field.placeholder.length > 100) return false;
         } else if (field.type === "checkbox") {
           if (fieldKeys.length !== 5
               || !fieldKeys.every(key => [
@@ -312,6 +395,7 @@
         form.dataset.componentId = component.id;
         form.dataset.action = component.action;
         const inputs = [];
+        const controls = [];
         for (const field of component.fields) {
           const label = document.createElement("label");
           label.className = "plugin-ui-form-field";
@@ -325,6 +409,29 @@
             if (field.min !== null) input.min = String(field.min);
             if (field.max !== null) input.max = String(field.max);
             input.value = field.value === null ? "" : String(field.value);
+          } else if (field.type === "secret") {
+            input = document.createElement("input");
+            input.type = "hidden";
+            input.value = "";
+            const secretStatus = document.createElement("span");
+            secretStatus.className = "plugin-ui-secret-status";
+            secretStatus.textContent = field.placeholder;
+            const secretButton = document.createElement("button");
+            secretButton.type = "button";
+            secretButton.className = "plugin-ui-button";
+            secretButton.textContent = localText("secretInsert", "Register");
+            secretButton.disabled = component.disabled;
+            secretButton.addEventListener("click", () => {
+              openSecretDialog({input, status: secretStatus, button: secretButton, label: field.label});
+            });
+            label.classList.add("is-secret");
+            label.append(labelText, secretStatus, secretButton, input);
+            input.name = field.id;
+            input.disabled = component.disabled;
+            form.append(label);
+            inputs.push(input);
+            controls.push(input, secretButton);
+            continue;
           } else if (field.type === "checkbox") {
             input = document.createElement("input");
             input.type = "checkbox";
@@ -357,6 +464,7 @@
           label.append(labelText, input);
           form.append(label);
           inputs.push(input);
+          controls.push(input);
         }
         const submit = document.createElement("button");
         submit.type = "submit";
@@ -372,6 +480,8 @@
           for (const input of inputs) {
             if (input.type === "checkbox") {
               values[input.name] = input.checked;
+            } else if (input.type === "hidden") {
+              values[input.name] = input.value || null;
             } else if (input.type === "number") {
               if (input.value === "") {
                 values[input.name] = null;
@@ -388,16 +498,16 @@
             showFeedback("Invalid number", true);
             return;
           }
-          const controls = [...inputs, submit];
-          const disabledStates = controls.map(control => control.disabled);
-          controls.forEach(control => { control.disabled = true; });
+          const allControls = [...controls, submit];
+          const disabledStates = allControls.map(control => control.disabled);
+          allControls.forEach(control => { control.disabled = true; });
           try {
             await requestAction(pluginName, component.action, {
               form_id: component.id,
               values,
             });
           } finally {
-            controls.forEach((control, index) => {
+            allControls.forEach((control, index) => {
               control.disabled = disabledStates[index];
             });
           }
@@ -445,7 +555,7 @@
       if (!response.ok) throw new Error("plugin UI HTTP " + response.status);
       const payload = await response.json();
       if (generation !== initGeneration) return;
-      if (!payload || payload.version !== 9 || !Array.isArray(payload.plugins)) {
+      if (!payload || payload.version !== 10 || !Array.isArray(payload.plugins)) {
         throw new Error("invalid plugin UI payload");
       }
       for (const definition of collectValidDefinitions(payload.plugins)) {

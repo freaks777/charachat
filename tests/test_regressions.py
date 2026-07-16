@@ -261,7 +261,15 @@ class PluginUiTests(unittest.IsolatedAsyncioTestCase):
     def manager(self, plugins):
         manager = PluginManager.__new__(PluginManager)
         manager.plugins = sorted(plugins, key=lambda plugin: plugin.priority)
+        manager._secret_validator = None
         return manager
+
+    @staticmethod
+    def secret_field(required=False):
+        return {
+            "type": "secret", "id": "token", "label": "API token",
+            "required": required, "placeholder": "Stored locally",
+        }
 
     def test_collects_valid_definitions_in_priority_order_and_isolates_failures(self):
         late = self.plugin("late", 80, self.definition("chat.input_actions"))
@@ -697,6 +705,49 @@ class PluginUiTests(unittest.IsolatedAsyncioTestCase):
             await required_manager.dispatch_ui_action("required", "search", {
                 "form_id": "search-form", "values": {"amount": None},
             })
+    async def test_validates_secret_field_definition_and_registered_references(self):
+        secret = self.secret_field()
+        definition = self.definition(components=[self.form_component(fields=[secret])])
+        manager = self.manager([self.plugin("demo", definition=definition)])
+        manager.set_secret_validator(lambda reference: reference == "{{secret:7}}")
+
+        accepted = await manager.dispatch_ui_action("demo", "search", {
+            "form_id": "search-form", "values": {"token": "{{secret:7}}"},
+        })
+        self.assertEqual(accepted["data"]["values"]["token"], "{{secret:7}}")
+        accepted_null = await manager.dispatch_ui_action("demo", "search", {
+            "form_id": "search-form", "values": {"token": None},
+        })
+        self.assertIsNone(accepted_null["data"]["values"]["token"])
+
+        for value in ("secret", "{{secret:8}}", "{{secret:7}}suffix", 7, True):
+            with self.subTest(value=value):
+                rejecting = self.manager([self.plugin("demo", definition=definition, error="action")])
+                rejecting.set_secret_validator(lambda reference: reference == "{{secret:7}}")
+                with self.assertRaises(ValueError):
+                    await rejecting.dispatch_ui_action("demo", "search", {
+                        "form_id": "search-form", "values": {"token": value},
+                    })
+
+        required = self.secret_field(required=True)
+        required_definition = self.definition(components=[self.form_component(fields=[required])])
+        required_manager = self.manager([self.plugin("required", definition=required_definition)])
+        required_manager.set_secret_validator(lambda reference: reference == "{{secret:7}}")
+        with self.assertRaises(ValueError):
+            await required_manager.dispatch_ui_action("required", "search", {
+                "form_id": "search-form", "values": {"token": None},
+            })
+
+        for malformed in (
+            {**secret, "value": "{{secret:7}}"},
+            {**secret, "placeholder": "x" * 101},
+            {**secret, "placeholder": 1},
+        ):
+            with self.subTest(malformed=malformed):
+                self.assertIsNone(PluginManager._validate_ui_definition(
+                    self.plugin("demo"), self.definition(components=[self.form_component(fields=[malformed])])
+                ))
+
     async def test_rejects_invalid_form_payload_before_plugin_handler(self):
         form = self.form_component()
         definition = self.definition(components=[form])
@@ -1016,7 +1067,7 @@ class PluginUiTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertIn('@app.get("/api/plugins/ui")', main_source)
-        self.assertIn('"version": 9', main_source)
+        self.assertIn('"version": 10', main_source)
         self.assertIn(
             '@app.post("/api/plugins/{plugin_name}/actions/{action}")',
             main_source,
@@ -1038,7 +1089,7 @@ class PluginUiTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('button.textContent = component.label', script)
         self.assertIn('status.textContent = component.text', script)
         self.assertIn('separator.setAttribute("role", "separator")', script)
-        self.assertIn('payload.version !== 9', script)
+        self.assertIn('payload.version !== 10', script)
         self.assertIn('const groups = new Map()', script)
         self.assertIn('if (!groups.has(pluginName)) groups.set(pluginName, [])', script)
         self.assertIn('function validPluginDefinitions(definitions)', script)
@@ -1058,11 +1109,14 @@ class PluginUiTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('input.checked = field.value', script)
         self.assertIn('input.type === "checkbox"', script)
         self.assertIn('input.valueAsNumber', script)
+        self.assertIn('input.type = "hidden"', script)
+        self.assertIn('fetch("/api/secrets/register"', script)
+        self.assertIn('SECRET_REFERENCE_RE.test(result.placeholder', script)
         self.assertIn('option.textContent = item.label', script)
         self.assertIn('input.autocomplete = "off"', script)
         self.assertIn('input.value = field.value', script)
         self.assertIn('form_id: component.id', script)
-        self.assertIn('controls.forEach(control => { control.disabled = true; })', script)
+        self.assertIn('allControls.forEach(control => { control.disabled = true; })', script)
         self.assertIn('button.addEventListener("click"', script)
         self.assertIn("slot.replaceChildren()", script)
         self.assertIn("generation !== initGeneration", script)
@@ -1083,7 +1137,7 @@ class PluginDevelopmentGuideTests(unittest.IsolatedAsyncioTestCase):
         compile(source, str(template), "exec")
 
         for required in [
-            "version 9",
+            "version 10",
             "chat.input_actions",
             "chat.toolbar",
             "studio.actions",

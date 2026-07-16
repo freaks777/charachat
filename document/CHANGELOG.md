@@ -1230,3 +1230,17 @@ DOM挿入監査で確認したF1〜F3を修正。
 **変更ファイル**: `backend/plugins/plugin_manager.py`, `backend/main.py`, `backend/plugins/_template/plugin.py`, `frontend/js/plugin-ui.js`, `tests/test_regressions.py`, `document/plugin_development.md`, `document/RPスタンドアロンアプリ_設計書.md`, `document/CHANGELOG.md`, `document/backlog.md`
 
 **確認結果**: 回帰テスト65件成功、Plugin UIテスト31件成功、ガイド・雛形テスト2件成功、Python・JavaScript構文チェック成功、`git diff --check` 問題なし
+
+### 22.26 動的プラグインUI拡張 Phase 9（2026-07-17）
+
+- UIスキーマをversion 10へ更新し、参照専用の `secret` fieldを追加
+- 実値は既存の `POST /api/secrets/register` だけに送信し、通常のPlugin UI actionとhandlerには `{{secret:N}}` 参照だけを渡す
+- optional secretはnull、required secretは登録済み完全一致参照を必須とし、不明・手書き・形式不正参照をhandler呼出前に拒否
+- PluginManagerへvalidatorを注入してsecrets実装との直接依存を避け、secrets無効時は参照を受理しない
+- フロントはDOM APIで登録dialogとマスク済み状態を構築し、dialog close/finallyで実値入力をクリア。feedback、CustomEvent、dataset、action payloadに実値を保存しない
+- 既存secretsの `normalize` APIも実値を保護処理できるが、secret fieldはregister APIだけを使用する
+- secret一覧・選択・reveal・自動復元・handlerへの実値解決は対象外として維持
+
+**変更ファイル**: `.gitignore`, `backend/main.py`, `backend/plugins/plugin_manager.py`, `frontend/js/plugin-ui.js`, `frontend/css/style.css`, `tests/test_regressions.py`, `document/plugin_development.md`, `document/RPスタンドアロンアプリ_設計書.md`, `document/CHANGELOG.md`, `document/backlog.md`
+
+**確認結果**: 回帰テスト66件成功、Plugin UIテスト32件成功、ガイド・雛形テスト2件成功、Python・JavaScript構文チェック成功、`git diff --check` 問題なし

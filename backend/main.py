@@ -837,6 +837,14 @@ def _secrets_plugin():
     return plugin_manager.get("secrets") if plugin_manager.has("secrets") else None
 
 
+def _is_registered_secret_reference(reference: str) -> bool:
+    plugin = _secrets_plugin()
+    return plugin is not None and plugin.get_entry(reference) is not None
+
+
+plugin_manager.set_secret_validator(_is_registered_secret_reference)
+
+
 def _protect_secret_data(value):
     """ネストしたStudioデータから既存構文と登録済み実値を除去する。"""
     plugin = _secrets_plugin()
@@ -871,7 +879,7 @@ async def get_plugin_ui():
     from fastapi.responses import JSONResponse
     return JSONResponse(
         content={
-            "version": 9,
+            "version": 10,
             "plugins": plugin_manager.collect_ui_definitions(),
         },
         headers=_no_store_headers(),
