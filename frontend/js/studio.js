@@ -543,12 +543,13 @@ async function saveDraft() {
     });
     const data = await res.json();
     if (data.error) { setStatus(data.error, true); showToast(data.error, true); return; }
-    setStatus("保存しました: " + personaId);
-    showToast("✓ 保存完了: " + personaId);
-    hasDraft = false;
-    document.getElementById("result-panel").style.display = "none";
-    document.getElementById("action-bar").style.display = "none";
-    loadSavedPersonas();
+    const warningCode = data.warning && data.warning.code ? String(data.warning.code) : "";
+    setStatus("保存しました: " + personaId + (warningCode ? " (索引警告: " + warningCode + ")" : ""), Boolean(warningCode));
+    showToast("✓ 保存完了: " + personaId + (warningCode ? " / 索引は再構築できます" : ""), Boolean(warningCode));
+    hasDraft = true;
+    document.getElementById("result-panel").style.display = "block";
+    document.getElementById("action-bar").style.display = "flex";
+    await loadSavedPersonas();
   } catch (err) { setStatus("通信エラー: " + err, true); showToast("保存失敗: " + err, true); }
 }
 

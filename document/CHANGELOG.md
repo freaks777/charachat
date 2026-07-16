@@ -1294,3 +1294,14 @@ DOM挿入監査で確認したF1〜F3を修正。
 **変更ファイル**: `backend/main.py`, `frontend/js/studio.js`, `tests/test_regressions.py`, `document/RPスタンドアロンアプリ_設計書.md`, `document/CHANGELOG.md`, `document/backlog.md`
 
 **確認結果**: persona削除対象テスト3件成功、全回帰88件成功、Python・JavaScript構文チェック成功、`git diff --check` 問題なし
+
+### 22.31 Persona Studio保存後の表示維持（2026-07-17）
+
+- persona保存成功後もSOUL.md/SKILL.mdの結果パネルと修正・保存・テスト会話の操作領域を表示したまま維持
+- 保存後の編集可能状態を保持し、保存済みpersona一覧だけをawait再読込
+- persona_base索引warningは保存成功を維持したまま、再構築可能な警告として画面へ表示
+- 新規生成、保存済みpersona読込、生成前フォーム下書き読込の表示契約を回帰テストで分離確認
+
+**変更ファイル**: `frontend/js/studio.js`, `tests/test_regressions.py`, `document/RPスタンドアロンアプリ_設計書.md`, `document/CHANGELOG.md`, `document/backlog.md`
+
+**確認結果**: Persona Studio表示契約テスト2件成功、全回帰90件成功、JavaScript・Python構文チェック成功、`git diff --check` 問題なし

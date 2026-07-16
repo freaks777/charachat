@@ -1790,6 +1790,32 @@ class SessionListContractTests(unittest.TestCase):
         )
 
 
+class PersonaStudioSaveDisplayTests(unittest.TestCase):
+    def test_save_success_keeps_results_and_actions_editable(self):
+        source = (ROOT / "frontend" / "js" / "studio.js").read_text(encoding="utf-8")
+        start = source.index("async function saveDraft()")
+        end = source.index("// ── テスト会話", start)
+        save_source = source[start:end]
+        self.assertIn('hasDraft = true;', save_source)
+        self.assertIn('getElementById("result-panel").style.display = "block"', save_source)
+        self.assertIn('getElementById("action-bar").style.display = "flex"', save_source)
+        self.assertIn("await loadSavedPersonas();", save_source)
+        self.assertNotIn('getElementById("result-panel").style.display = "none"', save_source)
+        self.assertNotIn('getElementById("action-bar").style.display = "none"', save_source)
+
+    def test_new_saved_and_form_draft_paths_have_distinct_display_contracts(self):
+        source = (ROOT / "frontend" / "js" / "studio.js").read_text(encoding="utf-8")
+        show_start = source.index("function showResult(draft)")
+        show_end = source.index("function switchResultTab", show_start)
+        self.assertIn('getElementById("result-panel").style.display = "block"', source[show_start:show_end])
+        load_start = source.index("async function loadDraft(personaId)")
+        load_end = source.index("async function deletePersona", load_start)
+        self.assertIn("showResult(d);", source[load_start:load_end])
+        form_start = source.index("async function loadFormDraft(personaId)")
+        form_end = source.index("function setStatus", form_start)
+        self.assertIn('getElementById("result-panel").style.display = "none"', source[form_start:form_end])
+
+
 class PersonaDeleteLifecycleTests(unittest.IsolatedAsyncioTestCase):
     async def test_active_persona_is_rejected_before_deletion(self):
         import main as app_main
