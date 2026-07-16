@@ -1426,8 +1426,12 @@ async def list_sessions():
         persona_id = persona_dir.name
         persona_name = persona_map.get(persona_id, persona_id)
 
-        # JSONL ファイルを日付降順で取得
-        jsonl_files = sorted(persona_dir.glob("*.jsonl"), reverse=True)
+        # 正規の会話JSONLだけを日付降順で取得（state history等のsidecarを除外）
+        jsonl_files = sorted(
+            (f for f in persona_dir.glob("*.jsonl")
+             if re.fullmatch(r"\d{4}-\d{2}-\d{2}_\d{8}\.jsonl", f.name)),
+            reverse=True,
+        )
         for f in jsonl_files:
             stem = f.stem
             # ファイル名は常に YYYY-MM-DD_HHMMSSRR.jsonl 形式

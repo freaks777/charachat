@@ -2,6 +2,7 @@ import ast
 import asyncio
 import json
 import os
+import re
 import sys
 import tempfile
 import unittest
@@ -1565,6 +1566,27 @@ class SecretsTests(unittest.TestCase):
         self.assertNotIn('history.add(user_text, "")', source)
         self.assertIn("content = _protect_secret_data(req.content)", source)
         self.assertNotIn("content = req.content", source)
+
+class SessionListContractTests(unittest.TestCase):
+    def test_session_list_excludes_state_history_sidecars(self):
+        pattern = re.compile(r"^\d{4}-\d{2}-\d{2}_\d{8}\.jsonl$")
+        candidates = [
+            "2026-07-17_12345678.jsonl",
+            "12345678_state_history.jsonl",
+            "2026-07-17_12345678.meta.json",
+            "invalid.jsonl",
+        ]
+        self.assertEqual(
+            [name for name in candidates if pattern.fullmatch(name)],
+            ["2026-07-17_12345678.jsonl"],
+        )
+
+        source = (ROOT / "backend" / "main.py").read_text(encoding="utf-8")
+        self.assertIn(
+            'if re.fullmatch(r"\\d{4}-\\d{2}-\\d{2}_\\d{8}\\.jsonl", f.name)',
+            source,
+        )
+
 
 class StateHistoryContractTests(unittest.TestCase):
     def test_state_snapshots_follow_history_edits(self):
