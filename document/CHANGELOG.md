@@ -1343,3 +1343,18 @@ DOM挿入監査で確認したF1〜F3を修正。
 **変更ファイル**: `backend/main.py`, `backend/plugins/memory/plugin.py`, `frontend/settings.html`, `frontend/js/settings.js`, `frontend/css/style.css`, `tests/test_regressions.py`, `document/RPスタンドアロンアプリ_設計書.md`, `document/CHANGELOG.md`, `document/backlog.md`
 
 **確認結果**: Memory管理対象テスト19件成功、全回帰102件成功、Python・JavaScript構文チェック成功、実APIでstats/records/冪等全件削除・不正引数422を確認、900px/500px実画面確認、git diff --check 問題なし
+
+### 22.35 Phase A 利用開始・Persona import契約の整合化（2026-07-17）
+
+- ルート`bootstrap.py`を追加し、Windows/macOS/Linux launcherをPython 3.11以上・専用`.venv`・初回依存導入・config初回コピーの共通契約へ統一
+- 既存`.venv`と`backend/config.yaml`は自動更新・上書きせず、空configも保護して明示エラーで停止
+- Windows launcherとdefault configの`E:/LLM`固定値を廃止し、ChromaDBは相対path、Hugging Face cacheは標準設定または利用者の環境変数を尊重
+- Persona importをPI-Bへ確定し、`SOUL.md` / `SKILL.md` / `style.yaml`の不足・空・不正schemaを登録前に拒否
+- validate APIは`complete` / `incomplete` / `invalid`、import APIは不足/不正422・既存ID 409・完成成功200の契約へ統一
+- importは一時ディレクトリでコピー後に再検証し、失敗時にdestinationを残さず、完成確定後だけ`persona_base`を索引化
+- Studio UIは検証成功まで登録を無効化し、不足・不正・衝突・索引warningを区別して日英表示
+- README、設計書、backlogをQS-A + PI-B契約へ同期
+
+**変更ファイル**: `bootstrap.py`, `start_server.bat`, `start_server.sh`, `backend/config.default.yaml`, `backend/core/config.py`, `backend/main.py`, `frontend/studio.html`, `frontend/js/studio.js`, `frontend/js/i18n.js`, `tests/test_regressions.py`, `README.md`, `document/RPスタンドアロンアプリ_設計書.md`, `document/CHANGELOG.md`, `document/backlog.md`
+
+**確認結果**: Phase A対象テスト10件成功、全回帰111件成功、Python構文・compileall成功、JavaScript 7ファイル構文チェック成功、pip check問題なし、標準`start_server.bat`実サーバーで主要5画面200・validate complete・既存ID import 409・config hash/mtime不変を確認、停止後port 8765解放、git diff --check問題なし

@@ -2,6 +2,7 @@
 
 let hasDraft = false;
 let _loading = false;
+let _fileImportReady = false;
 let studioSecrets = [];
 let lastStudioSecretTarget = null;
 
@@ -44,6 +45,8 @@ function setLoading(active, msg) {
   document.querySelectorAll(".btn-primary").forEach(b => {
     if (b.id !== "lang-toggle") b.disabled = active;
   });
+  const importButton = document.getElementById("studio-import");
+  if (importButton && !active) importButton.disabled = !_fileImportReady;
 }
 
 function getStudioAbortController() {
@@ -312,6 +315,7 @@ function resetAll() {
   document.getElementById("raw-text").value = "";
   document.getElementById("raw-text").dispatchEvent(new Event("input"));
   document.getElementById("d-source-dir").value = "";
+  setFileImportReady(false);
   document.getElementById("t-persona-id").value = defaultPersonaId();
   document.getElementById("d-persona-id").value = document.getElementById("t-persona-id").value;
   validatePersonaId(document.getElementById("t-persona-id"));
@@ -583,10 +587,24 @@ async function doTestChat() {
 }
 
 // ── インポート ──
+function setFileImportReady(ready) {
+  _fileImportReady = Boolean(ready);
+  const button = document.getElementById("studio-import");
+  if (button) button.disabled = _loading || !_fileImportReady;
+}
+
+function appendFileValidationLine(container, className, text) {
+  const line = document.createElement("span");
+  line.className = className;
+  line.textContent = text;
+  container.append(line, document.createElement("br"));
+}
+
 async function validateFiles() {
   const sourceDir = document.getElementById("d-source-dir").value.trim();
-  if (!sourceDir) { setStatus("フォルダを入力してください", true); return; }
-  setStatus("確認中...");
+  setFileImportReady(false);
+  if (!sourceDir) { setStatus(t("importSourceRequired"), true); return; }
+  setStatus(t("importChecking"));
   try {
     const res = await fetch("/api/persona-studio/validate-files", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -596,51 +614,66 @@ async function validateFiles() {
     const el = document.getElementById("file-validation");
     el.style.display = "block";
     el.replaceChildren();
-    if (data.error) {
-      const error = document.createElement("span");
-      error.className = "validation-error";
-      error.textContent = String(data.error);
-      el.appendChild(error);
-    } else {
-      const found = data.found || [];
-      const missing = data.missing || [];
-      found.forEach(file => {
-        const line = document.createElement("span");
-        line.className = "validation-found";
-        line.textContent = `✓ ${String(file)}`;
-        el.append(line, document.createElement("br"));
-      });
-      missing.forEach(file => {
-        const line = document.createElement("span");
-        line.className = "validation-missing";
-        line.textContent = `⚠ ${String(file)} — 登録時に自動生成`;
-        el.append(line, document.createElement("br"));
-      });
-      if (el.lastElementChild?.tagName === "BR") el.lastElementChild.remove();
-      setStatus(missing.length === 0 ? "全ファイル検出 — 即登録可能" : "一部ファイル不足 — 登録時に自動生成");
+    if (!res.ok || data.error) {
+      appendFileValidationLine(el, "validation-error", t("importValidationFailed") + ": " + String(data.error || res.status));
+      if (el.lastElementChild && el.lastElementChild.tagName === "BR") el.lastElementChild.remove();
+      setStatus(t("importValidationFailed"), true);
+      return;
     }
-  } catch (err) { setStatus("確認失敗: " + err, true); }
+
+    const found = Array.isArray(data.found) ? data.found : [];
+    const missing = Array.isArray(data.missing) ? data.missing : [];
+    const invalid = Array.isArray(data.invalid) ? data.invalid : [];
+    found.forEach(file => appendFileValidationLine(el, "validation-found", "✓ " + String(file)));
+    missing.forEach(file => appendFileValidationLine(el, "validation-missing", "⚠ " + String(file) + " — " + t("importFileRequired")));
+    invalid.forEach(file => appendFileValidationLine(el, "validation-error", "✕ " + String(file) + " — " + t("importFileInvalid")));
+    if (el.lastElementChild && el.lastElementChild.tagName === "BR") el.lastElementChild.remove();
+
+    const complete = data.status === "complete" && missing.length === 0 && invalid.length === 0;
+    setFileImportReady(complete);
+    setStatus(complete ? t("importCompleteReady") : t("importNeedsComplete"), !complete);
+  } catch (err) {
+    setFileImportReady(false);
+    setStatus(t("importValidationFailed") + ": " + err, true);
+  }
 }
 
 async function importPersona() {
   if (_loading) return;
   const personaId = document.getElementById("d-persona-id").value.trim();
   const sourceDir = document.getElementById("d-source-dir").value.trim();
-  if (!personaId) { setStatus("ペルソナIDを入力してください", true); return; }
-  if (!sourceDir) { setStatus("登録元フォルダを入力してください", true); return; }
-  setLoading(true, "インポート中...");
+  if (!personaId) { setStatus(t("importPersonaIdRequired"), true); return; }
+  if (!sourceDir) { setStatus(t("importSourceRequired"), true); return; }
+  if (!_fileImportReady) { setStatus(t("importNeedsValidation"), true); return; }
+
+  setLoading(true, t("importInProgress"));
   try {
     const res = await fetch("/api/persona-studio/import", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ persona_id: personaId, source_dir: sourceDir }),
     });
     const data = await res.json();
-    if (data.error) { setLoading(false); setStatus(data.error, true); showToast(data.error, true); return; }
+    if (!res.ok || data.error) {
+      let message = t("importFailed");
+      if (data.error === "incomplete_persona") message = t("importNeedsComplete");
+      if (data.error === "invalid_persona_file") message = t("importFileInvalid");
+      if (data.error === "persona_exists") message = t("importPersonaExists");
+      setStatus(message + " (" + String(data.error || res.status) + ")", true);
+      showToast(message, true);
+      return;
+    }
+
+    const warningCode = data.warning && data.warning.code ? String(data.warning.code) : "";
+    _fileImportReady = false;
+    setStatus(t("importDone") + ": " + personaId + (warningCode ? " (" + t("importIndexWarning") + ": " + warningCode + ")" : ""), Boolean(warningCode));
+    showToast("✓ " + t("importDone") + ": " + personaId, Boolean(warningCode));
+    await loadSavedPersonas();
+  } catch (err) {
+    setStatus(t("importFailed") + ": " + err, true);
+    showToast(t("importFailed"), true);
+  } finally {
     setLoading(false);
-    setStatus("インポート完了: " + personaId + " (" + data.imported.join(", ") + ")");
-    showToast("✓ インポート: " + personaId);
-    loadSavedPersonas();
-  } catch (err) { setLoading(false); setStatus("インポート失敗: " + err, true); showToast("インポート失敗: " + err, true); }
+  }
 }
 
 // ── 保存済み一覧 ──
@@ -881,6 +914,10 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById('studio-save-form-draft').addEventListener('click', saveFormDraft);
   document.getElementById('studio-validate-files').addEventListener('click', validateFiles);
   document.getElementById('studio-import').addEventListener('click', importPersona);
+  document.getElementById('d-source-dir').addEventListener('input', () => {
+    setFileImportReady(false);
+    document.getElementById('file-validation').style.display = 'none';
+  });
   document.getElementById('result-tab-soul').addEventListener('click', () => switchResultTab('soul'));
   document.getElementById('result-tab-skill').addEventListener('click', () => switchResultTab('skill'));
   document.getElementById('studio-close-test').addEventListener('click', toggleTestChat);

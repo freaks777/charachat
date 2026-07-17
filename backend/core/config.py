@@ -134,7 +134,13 @@ def load_config(path: str | Path | None = None) -> dict:
     path = Path(path)
 
     if not path.exists():
-        raise FileNotFoundError(f"config not found: {path}")
+        default_path = path.with_name("config.default.yaml")
+        raise FileNotFoundError(
+            f"config not found: {path}. Run start_server.bat/start_server.sh, "
+            f"or copy {default_path} to {path}."
+        )
+    if not path.is_file() or path.stat().st_size == 0:
+        raise FileNotFoundError(f"config is not a non-empty file: {path}")
 
     with open(path, "r", encoding="utf-8") as f:
         raw = _yaml.load(f)

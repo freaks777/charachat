@@ -1,8 +1,8 @@
 # ============================================================
 # minichat-pchan 設定ファイル
 # ============================================================
-# このファイルをコピーして config.yaml を作成し、環境に合わせて編集してください。
-# config.yaml が存在しない場合は、このファイルがデフォルト値として使用されます。
+# 初回起動時にbootstrap.pyがこのファイルをconfig.yamlへコピーします。
+# 既存のconfig.yamlは自動で上書きされません。環境に合わせて編集してください。
 #
 # ${VAR} 形式の値は、.env ファイルの環境変数から自動的に読み込まれます。
 # ============================================================
@@ -104,9 +104,9 @@ default_persona: kyouka-detective
 # ── ChromaDB（長期記憶・ベクトル検索） ─────────────────────────
 # memory プラグイン使用時に必要。大規模データのため別ドライブ推奨。
 chroma:
-  path: E:/LLM/chroma                      # ChromaDB のデータ保存先
+  path: ./data/chroma                       # ChromaDB のデータ保存先（リポジトリルート基準）
   embedding_model: intfloat/multilingual-e5-small  # 埋め込みモデル（HuggingFaceのモデル名）
-  embedding_cache: E:/LLM/models           # モデルのダウンロードキャッシュ先
+  embedding_cache: null                     # null時はHF_HOME等の標準設定を使用
 
 # ── プラグイン ─────────────────────────────────────────────────
 # enabled: 有効化するプラグインのリスト

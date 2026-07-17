@@ -22,19 +22,17 @@ Many roleplay apps exist, but some limit character customization or tie users to
 
 ## Quick Start
 
+Python 3.11以上をインストールしてください。標準起動スクリプトが初回だけ専用`.venv`、依存パッケージ、`backend/config.yaml`を準備します。
+
 ### 1. 環境変数
 
-`.env.example` をコピーして `.env` を作成し、使用するAPIキーを設定。
+`.env.example` をコピーして `.env` を作成し、使用するAPIキーを設定します。APIキーを後で設定する場合もサーバーは起動できますが、LLM呼び出しは失敗します。
 
 ```bash
 cp .env.example .env
 ```
 
-### 2. 設定
-
-`backend/config.default.yaml` をコピーして `config.yaml` を作成（デフォルト値で良ければコピー不要、自動生成）。
-
-### 3. 起動
+### 2. 起動
 
 ```bash
 # Windows
@@ -44,11 +42,35 @@ start_server.bat
 bash start_server.sh
 ```
 
-ブラウザで `http://localhost:8765` を開く。
+初回起動では次を自動実行するため、依存ダウンロードに数分以上かかる場合があります。
+
+1. `.venv` がなければ作成
+2. 新規`.venv`へ`requirements.txt`をインストール
+3. `backend/config.yaml`がなければ`backend/config.default.yaml`から初回コピー
+
+既存の`.venv`は再作成・自動更新せず、既存の`backend/config.yaml`は上書きしません。空のconfigが存在する場合も上書きせず、復旧手順を表示して停止します。Hugging Face cacheを変更したい場合は、`HF_HOME` / `SENTENCE_TRANSFORMERS_HOME`を利用者側で設定してください。
+
+ブラウザで `http://localhost:8765` を開きます。
+
+### 3. 設定
+
+初回生成された`backend/config.yaml`を必要に応じて編集します。起動スクリプトを使わず手動準備する場合は、次を実行してください。
+
+```bash
+python -m venv .venv
+
+# Windows
+.venv/Scripts/python.exe -m pip install -r requirements.txt
+copy backend/config.default.yaml backend/config.yaml
+
+# macOS / Linux
+.venv/bin/python -m pip install -r requirements.txt
+cp backend/config.default.yaml backend/config.yaml
+```
 
 ### 4. ペルソナ作成
 
-`personas/` に新しいディレクトリを作り、`SOUL.md`（人格定義）と `SKILL.md`（知識・能力）を配置。`_template/` を参考に。
+`personas/` に新しいディレクトリを作り、`SOUL.md`（人格定義）、`SKILL.md`（知識・能力）、`style.yaml`（文体設定）を配置します。`personas/_template/`を参考にしてください。Persona Studioのファイルimportも3ファイルすべてを必須とし、不足・空・不正形式は登録前に拒否します。
 
 ## Project Structure
 
@@ -78,9 +100,7 @@ bash start_server.sh
 
 ### インストール
 
-```bash
-python -m pip install -r requirements.txt
-```
+通常はQuick Startの起動スクリプトが専用`.venv`へ自動インストールします。手動導入する場合もsystem Pythonへ直接入れず、上記の`.venv`を使用してください。
 
 `requirements.txt` にはコア機能とmemoryプラグインの検証済み依存関係が含まれます。
 
@@ -94,9 +114,9 @@ python -m pip install -r requirements.txt
 
 ## Supported Providers / 対応プロバイダ
 
-`config.default.yaml` に全プロバイダの設定が含まれているが、APIキーを取得していないものは**動作未検証**。
+`backend/config.default.yaml` に全プロバイダの設定が含まれているが、APIキーを取得していないものは**動作未検証**。
 
-All providers are configured in `config.default.yaml`, but those without a verified API key are **untested**.
+All providers are configured in `backend/config.default.yaml`, but those without a verified API key are **untested**.
 
 Status は作者環境での動作確認状況です。✅ = 実稼働確認済み、⚠️ = コード対応済みだがAPIキー未取得のため未検証。
 

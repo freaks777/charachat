@@ -699,6 +699,7 @@ style:
   person: first
 ```
 
+**fresh clone bootstrap**: リポジトリルートの`bootstrap.py`を`start_server.bat` / `start_server.sh`から呼び、Python 3.11以上を確認する。`.venv`不在時だけvenv作成と`requirements.txt`導入を行い、既存venvは再作成・自動更新しない。`backend/config.yaml`不在時だけ`config.default.yaml`から初回コピーし、既存または空configは上書きしない。初回処理に失敗した場合はサーバーを起動せず非0終了する。cache保存先は固定せず、利用者が設定した`HF_HOME` / `SENTENCE_TRANSFORMERS_HOME`だけを尊重する。
 **起動時バリデーション**: `.env` 不在時とアクティブプロバイダの `api_key` が空の場合に警告をログ出力（サーバーは起動継続）。
 **起動引数**: `--debug`（DEBUGログ有効）、`--model MODEL_ID`（config.yamlのモデルを上書き）。
 **ポート**: 8765（`python main.py` → `uvicorn.run(app, host="127.0.0.1", port=8765)`）。
@@ -771,7 +772,7 @@ watchdog:
 - 通常検索: `session_fact` だけを対象とし、常時system promptへ入るSOUL/SKILLと `persona_base` を重複注入しない
 - persona基本情報: `SOUL.md` / `SKILL.md` / `style.yaml` がすべて揃った保存・更新・import完了後に、追加LLM呼び出しなしで3文書を索引化する。3ファイルが正本であり、ChromaDBは再生成可能な派生索引とする
 - persona索引ID: `persona_id`・`kind=persona_base`・source・NFKC/改行正規化済み内容のSHA-256。3ファイル全体の `source_hash` と短縮revisionをmetadataへ保存し、更新時は同一personaの旧 `persona_base` を置換する
-- 障害境界: Memory未設定、不完全persona、embedding/ChromaDB障害でもpersona本体の保存/importは成功させ、`warning.resource=persona_base` と再構築可能フラグを返す。`POST /api/memory/personas/{persona_id}/rebuild` で確定ファイルから再構築できる
+- 障害境界: importは3ファイル不足・空・不正形式を422で拒否する。完成persona確定後のMemory未設定またはembedding/ChromaDB障害はpersona本体の成功へ波及させず、`warning.resource=persona_base` と再構築可能フラグを返す。`POST /api/memory/personas/{persona_id}/rebuild` で確定ファイルから再構築できる
 - 管理API: `GET /api/memory/stats`、`GET /api/memory/orphans`、`GET /api/memory/records` はdocument/embeddingを返さずmetadataだけを扱う。`POST /api/memory/delete` は `all` / `persona` / `session` / `records` / `orphans` scopeを厳密検証し、API lock内で削除する
 - 管理画面: SettingsのMemory DBタブでkind/persona/session/孤児統計、metadata一覧・filter、選択/persona/session/孤児/全件削除を提供する。削除前に対象件数を確認し、完了後は統計と一覧を再読込する
 - 設定: `config.yaml` の `chroma` セクション（`path`, `embedding_model`, `embedding_cache`）
@@ -812,10 +813,10 @@ chroma:
 |------|------|---------|
 | 固定フォーム | 名前・性格・口調・背景・禁止事項・スタイルを入力 → LLMでSOUL/SKILL生成 | `create-template` |
 | テキスト入力 | 自由記述・SOUL.mdテキストを貼り付け → LLMでペルソナ形式に変換 | `convert-freetext` |
-| ファイル指定 | フォルダパス指定 → ファイル確認 → 3ファイル揃っていれば即登録、不足分は自動生成 | `validate-files` + `import` |
+| ファイル指定 | フォルダパス指定 → 3ファイルの存在・内容検証 → 完成personaだけ新規登録 | `validate-files` + `import` |
 | ペルソナ一覧 | 登録済みペルソナの読込・削除。クリックで読込、ダブルクリックで削除 | `load` / `delete` |
 
-**ファイル指定の検証**: `POST /api/persona-studio/validate-files` がSOUL.md/SKILL.md/style.yamlの有無をチェック。不足ファイルは登録時にLLMで自動生成。
+**ファイル指定の検証**: `POST /api/persona-studio/validate-files` は`SOUL.md` / `SKILL.md` / `style.yaml`の存在、非空UTF-8、style schemaを検証し、`complete` / `incomplete` / `invalid`を返す。importは不足を`incomplete_persona`、不正内容を`invalid_persona_file`として422で拒否する。既存persona IDは`persona_exists`の409とし、無断上書きしない。完成ファイルは同一filesystem上の一時ディレクトリへコピー・再検証後に確定し、失敗時はdestinationや一時ディレクトリを残さない。成功後だけ`persona_base`を索引化する。
 
 **テンプレート**: `personas/_template/` にSOUL.md/SKILL.md/style.yamlのテンプレートを同梱。直接編集してファイル指定タブで登録可能。
 

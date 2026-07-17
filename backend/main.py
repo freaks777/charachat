@@ -2451,58 +2451,140 @@ async def save_persona(req: SavePersonaRequest):
         return {"error": str(e)}
 
 
+_PERSONA_IMPORT_FILES = ("SOUL.md", "SKILL.md", "style.yaml")
+_PERSONA_STYLE_VALUES = {
+    "viewpoint": {"ai_character", "user_character"},
+    "person": {"first", "third"},
+}
+
+
+def _inspect_persona_source(src: Path) -> dict:
+    """import元の3ファイルを読取り、完成personaとして利用可能か検証する。"""
+    found: list[str] = []
+    missing: list[str] = []
+    invalid: list[str] = []
+
+    for filename in _PERSONA_IMPORT_FILES:
+        path = src / filename
+        if not path.exists():
+            missing.append(filename)
+            continue
+        found.append(filename)
+        if not path.is_file():
+            invalid.append(filename)
+            continue
+        try:
+            if not path.read_text(encoding="utf-8").strip():
+                invalid.append(filename)
+        except (OSError, UnicodeError):
+            invalid.append(filename)
+
+    if "style.yaml" in found and "style.yaml" not in invalid:
+        try:
+            raw_style = load_style_yaml(src / "style.yaml")
+            style = raw_style.get("style") if isinstance(raw_style, dict) else None
+            if (
+                not isinstance(style, dict)
+                or style.get("viewpoint") not in _PERSONA_STYLE_VALUES["viewpoint"]
+                or style.get("person") not in _PERSONA_STYLE_VALUES["person"]
+                or type(style.get("narration")) is not bool
+            ):
+                invalid.append("style.yaml")
+        except Exception:
+            invalid.append("style.yaml")
+
+    status = "invalid" if invalid else ("incomplete" if missing else "complete")
+    return {
+        "status": status,
+        "found": found,
+        "missing": missing,
+        "invalid": list(dict.fromkeys(invalid)),
+    }
+
+
+def _persona_import_error(validation: dict):
+    from fastapi.responses import JSONResponse
+
+    error = "invalid_persona_file" if validation["invalid"] else "incomplete_persona"
+    return JSONResponse(status_code=422, content={"error": error, **validation})
+
+
 @app.post("/api/persona-studio/validate-files")
 async def validate_files(req: ValidateFilesRequest):
-    """指定フォルダ内のペルソナファイルの有無を確認する。"""
+    """指定フォルダが完成personaの3ファイル契約を満たすか確認する。"""
+    from fastapi.responses import JSONResponse
+
     source_dir = req.source_dir.strip()
     if not source_dir:
-        return {"error": "source_dir required"}
+        return JSONResponse(status_code=422, content={"error": "source_dir_required"})
 
     src = Path(source_dir)
     if not src.exists() or not src.is_dir():
-        return {"error": f"source directory not found: {source_dir}"}
+        return JSONResponse(status_code=404, content={"error": "source_not_found"})
 
-    required = ["SOUL.md", "SKILL.md", "style.yaml"]
-    found = [f for f in required if (src / f).exists()]
-    missing = [f for f in required if f not in found]
-
-    return {"found": found, "missing": missing}
+    return _inspect_persona_source(src)
 
 
 @app.post("/api/persona-studio/import")
 async def import_persona(req: ImportPersonaRequest):
-    """指定フォルダからSOUL.md/SKILL.md/style.yamlを読み込んで登録する。"""
+    """完成personaの3ファイルを検証後、原子的に新規登録する。"""
     import shutil
+    import tempfile
+    from fastapi.responses import JSONResponse
 
     persona_id = req.persona_id.strip()
     source_dir = req.source_dir.strip()
 
     if not persona_id:
-        return {"error": "persona_id required"}
+        return JSONResponse(status_code=422, content={"error": "persona_id_required"})
     if not source_dir:
-        return {"error": "source_dir required"}
+        return JSONResponse(status_code=422, content={"error": "source_dir_required"})
 
-    validate_persona_id(persona_id)
+    try:
+        validate_persona_id(persona_id)
+    except ValueError:
+        return JSONResponse(status_code=422, content={"error": "invalid_persona_id"})
     src = Path(source_dir)
     if not src.exists() or not src.is_dir():
-        return {"error": f"source directory not found: {source_dir}"}
+        return JSONResponse(status_code=404, content={"error": "source_not_found"})
+
+    validation = _inspect_persona_source(src)
+    if validation["status"] != "complete":
+        return _persona_import_error(validation)
 
     dest = PERSONAS_DIR / persona_id
-    dest.mkdir(parents=True, exist_ok=True)
+    if dest.exists():
+        return JSONResponse(status_code=409, content={"error": "persona_exists"})
 
-    imported = []
-    for fname in ("SOUL.md", "SKILL.md", "style.yaml"):
-        sf = src / fname
-        if sf.exists():
-            shutil.copy2(sf, dest / fname)
-            imported.append(fname)
+    PERSONAS_DIR.mkdir(parents=True, exist_ok=True)
+    temp_dir: Path | None = None
+    try:
+        temp_dir = Path(tempfile.mkdtemp(prefix=f".import-{persona_id}-", dir=PERSONAS_DIR))
+        for filename in _PERSONA_IMPORT_FILES:
+            shutil.copy2(src / filename, temp_dir / filename)
 
-    if not imported:
-        return {"error": "no SOUL.md, SKILL.md, or style.yaml found in source directory"}
+        copied_validation = _inspect_persona_source(temp_dir)
+        if copied_validation["status"] != "complete":
+            shutil.rmtree(temp_dir)
+            temp_dir = None
+            return _persona_import_error(copied_validation)
+
+        shutil.move(str(temp_dir), str(dest))
+        temp_dir = None
+    except Exception:
+        logger.exception("persona import failed before commit: %s", persona_id)
+        if temp_dir is not None and temp_dir.exists():
+            shutil.rmtree(temp_dir, ignore_errors=True)
+        return JSONResponse(status_code=500, content={"error": "import_failed"})
 
     index_result = await _index_persona_base(persona_id)
-    logger.info("persona imported: %s ← %s (%s)", persona_id, source_dir, ", ".join(imported))
-    response = {"status": "ok", "persona_id": persona_id, "imported": imported}
+    logger.info("persona imported: %s <- %s", persona_id, source_dir)
+    response = {
+        "status": "ok",
+        "completion": "complete",
+        "persona_id": persona_id,
+        "imported": list(_PERSONA_IMPORT_FILES),
+    }
     if "code" in index_result:
         response["warning"] = {"resource": "persona_base", **index_result}
     else:

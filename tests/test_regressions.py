@@ -43,6 +43,101 @@ from plugins.persona_studio.plugin import PersonaStudioPlugin
 from plugins.watchdog.plugin import WatchdogPlugin
 
 
+class BootstrapContractTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("rp_bootstrap", ROOT / "bootstrap.py")
+        cls.bootstrap_module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(cls.bootstrap_module)
+
+    def _layout(self, root: Path):
+        backend = root / "backend"
+        backend.mkdir()
+        (backend / "config.default.yaml").write_text("default: true", encoding="utf-8")
+        (root / "requirements.txt").write_text("example-package", encoding="utf-8")
+
+    def test_config_is_created_once_and_existing_content_is_untouched(self):
+        module = self.bootstrap_module
+        with tempfile.TemporaryDirectory(dir=TEST_TMP) as tmp:
+            root = Path(tmp)
+            self._layout(root)
+            config = module.ensure_config(root)
+            self.assertEqual(config.read_text(encoding="utf-8"), "default: true")
+
+            config.write_text("# unique user config", encoding="utf-8")
+            before = (config.read_bytes(), config.stat().st_mtime_ns)
+            module.ensure_config(root)
+            after = (config.read_bytes(), config.stat().st_mtime_ns)
+            self.assertEqual(after, before)
+
+    def test_empty_existing_config_is_rejected_without_overwrite(self):
+        module = self.bootstrap_module
+        with tempfile.TemporaryDirectory(dir=TEST_TMP) as tmp:
+            root = Path(tmp)
+            self._layout(root)
+            config = root / "backend" / "config.yaml"
+            config.write_bytes(b"")
+            with self.assertRaisesRegex(RuntimeError, "config is empty"):
+                module.ensure_config(root)
+            self.assertEqual(config.read_bytes(), b"")
+
+    def test_missing_venv_is_created_installed_and_not_rebuilt(self):
+        module = self.bootstrap_module
+        with tempfile.TemporaryDirectory(dir=TEST_TMP) as tmp:
+            root = Path(tmp)
+            self._layout(root)
+            calls = []
+
+            def fake_runner(command, check):
+                calls.append(command)
+                if command[1:3] == ["-m", "venv"]:
+                    python_path = module.venv_python_path(Path(command[3]))
+                    python_path.parent.mkdir(parents=True)
+                    python_path.write_text("", encoding="utf-8")
+
+            python_path = module.ensure_venv(root, runner=fake_runner, executable="bootstrap-python")
+            self.assertTrue(python_path.is_file())
+            self.assertEqual(calls[0][0:3], ["bootstrap-python", "-m", "venv"])
+            self.assertEqual(calls[1][1:4], ["-m", "pip", "install"])
+            self.assertTrue((root / ".venv" / ".rp-bootstrap-complete").is_file())
+            self.assertFalse((root / ".venv" / ".rp-bootstrap-incomplete").exists())
+
+            second_runner = mock.Mock()
+            module.ensure_venv(root, runner=second_runner)
+            second_runner.assert_not_called()
+
+    def test_python_version_and_launcher_contracts(self):
+        module = self.bootstrap_module
+        with self.assertRaisesRegex(RuntimeError, "Python 3.11"):
+            module.require_supported_python((3, 10, 9))
+
+        bat = (ROOT / "start_server.bat").read_text(encoding="utf-8")
+        shell = (ROOT / "start_server.sh").read_text(encoding="utf-8")
+        self.assertIn("bootstrap.py", bat)
+        self.assertIn("Scripts", bat)
+        self.assertIn("sys.version_info < (3, 11)", bat)
+        self.assertIn("bootstrap.py", shell)
+        self.assertIn(".venv/bin/python", shell)
+        self.assertIn("sys.version_info < (3, 11)", shell)
+        self.assertNotIn("E:", bat)
+        default_config = (ROOT / "backend" / "config.default.yaml").read_text(encoding="utf-8")
+        self.assertNotIn("E:/", default_config)
+
+    def test_persona_import_ui_requires_successful_validation(self):
+        html = (ROOT / "frontend" / "studio.html").read_text(encoding="utf-8")
+        script = (ROOT / "frontend" / "js" / "studio.js").read_text(encoding="utf-8")
+        i18n = (ROOT / "frontend" / "js" / "i18n.js").read_text(encoding="utf-8")
+        self.assertIn('id="studio-import" class="btn btn-primary" data-i18n="btnImport" disabled', html)
+        self.assertIn("setFileImportReady(false)", script)
+        self.assertIn('data.error === "incomplete_persona"', script)
+        self.assertIn('data.error === "invalid_persona_file"', script)
+        self.assertIn('data.error === "persona_exists"', script)
+        self.assertNotIn("不足分は自動生成", html + i18n)
+        self.assertNotIn("auto-generated on import", i18n)
+
 class ProviderConversionTests(unittest.TestCase):
     def test_all_system_messages_are_preserved(self):
         messages = [
@@ -1717,26 +1812,144 @@ class MemoryDeduplicationTests(unittest.IsolatedAsyncioTestCase):
         studio.delete_draft.assert_awaited_once_with("alice")
         index_mock.assert_awaited_once_with("alice")
 
-    async def test_persona_import_succeeds_with_index_warning(self):
+    @staticmethod
+    def _write_complete_persona(source_dir: Path):
+        source_dir.mkdir(parents=True)
+        (source_dir / "SOUL.md").write_text("Soul", encoding="utf-8")
+        (source_dir / "SKILL.md").write_text("Skill", encoding="utf-8")
+        (source_dir / "style.yaml").write_text(
+            """style:
+  viewpoint: ai_character
+  person: first
+  narration: true
+""",
+            encoding="utf-8",
+        )
+
+    async def test_persona_import_requires_complete_valid_files(self):
         import main as app_main
 
-        warning = {"code": "incomplete_persona", "rebuild_available": True}
         with tempfile.TemporaryDirectory(dir=TEST_TMP) as tmp:
             root = Path(tmp)
             source_dir = root / "source"
             source_dir.mkdir()
             (source_dir / "SOUL.md").write_text("Soul", encoding="utf-8")
-            with mock.patch.object(app_main, "PERSONAS_DIR", root / "personas"), mock.patch.object(
+            personas = root / "personas"
+            with mock.patch.object(app_main, "PERSONAS_DIR", personas), mock.patch.object(
+                app_main, "_index_persona_base", mock.AsyncMock()
+            ) as index_mock:
+                validation = await app_main.validate_files(
+                    app_main.ValidateFilesRequest(source_dir=str(source_dir))
+                )
+                result = await app_main.import_persona(app_main.ImportPersonaRequest(
+                    persona_id="alice", source_dir=str(source_dir)
+                ))
+
+            payload = json.loads(result.body)
+            self.assertEqual(validation["status"], "incomplete")
+            self.assertEqual(validation["missing"], ["SKILL.md", "style.yaml"])
+            self.assertEqual(result.status_code, 422)
+            self.assertEqual(payload["error"], "incomplete_persona")
+            self.assertFalse((personas / "alice").exists())
+            self.assertFalse(personas.exists())
+            index_mock.assert_not_awaited()
+
+    async def test_persona_import_rejects_invalid_style(self):
+        import main as app_main
+
+        with tempfile.TemporaryDirectory(dir=TEST_TMP) as tmp:
+            root = Path(tmp)
+            source_dir = root / "source"
+            self._write_complete_persona(source_dir)
+            (source_dir / "style.yaml").write_text(
+                """style:
+  viewpoint: invalid
+  person: first
+  narration: true
+""",
+                encoding="utf-8",
+            )
+            validation = await app_main.validate_files(
+                app_main.ValidateFilesRequest(source_dir=str(source_dir))
+            )
+            result = await app_main.import_persona(app_main.ImportPersonaRequest(
+                persona_id="alice", source_dir=str(source_dir)
+            ))
+
+        payload = json.loads(result.body)
+        self.assertEqual(validation["status"], "invalid")
+        self.assertEqual(validation["invalid"], ["style.yaml"])
+        self.assertEqual(result.status_code, 422)
+        self.assertEqual(payload["error"], "invalid_persona_file")
+
+    async def test_persona_import_is_complete_and_preserves_index_warning(self):
+        import main as app_main
+
+        warning = {"code": "memory_unavailable", "rebuild_available": True}
+        with tempfile.TemporaryDirectory(dir=TEST_TMP) as tmp:
+            root = Path(tmp)
+            source_dir = root / "source"
+            self._write_complete_persona(source_dir)
+            personas = root / "personas"
+            with mock.patch.object(app_main, "PERSONAS_DIR", personas), mock.patch.object(
                 app_main, "_index_persona_base", mock.AsyncMock(return_value=warning)
             ) as index_mock:
                 result = await app_main.import_persona(app_main.ImportPersonaRequest(
                     persona_id="alice", source_dir=str(source_dir)
                 ))
 
-        self.assertEqual(result["status"], "ok")
-        self.assertEqual(result["imported"], ["SOUL.md"])
-        self.assertEqual(result["warning"], {"resource": "persona_base", **warning})
-        index_mock.assert_awaited_once_with("alice")
+            self.assertEqual(result["status"], "ok")
+            self.assertEqual(result["completion"], "complete")
+            self.assertEqual(result["imported"], ["SOUL.md", "SKILL.md", "style.yaml"])
+            self.assertEqual(result["warning"], {"resource": "persona_base", **warning})
+            for filename in result["imported"]:
+                self.assertEqual(
+                    (personas / "alice" / filename).read_bytes(),
+                    (source_dir / filename).read_bytes(),
+                )
+            index_mock.assert_awaited_once_with("alice")
+
+    async def test_persona_import_collision_preserves_existing_persona(self):
+        import main as app_main
+
+        with tempfile.TemporaryDirectory(dir=TEST_TMP) as tmp:
+            root = Path(tmp)
+            source_dir = root / "source"
+            self._write_complete_persona(source_dir)
+            personas = root / "personas"
+            existing = personas / "alice"
+            existing.mkdir(parents=True)
+            sentinel = existing / "SOUL.md"
+            sentinel.write_text("existing", encoding="utf-8")
+            with mock.patch.object(app_main, "PERSONAS_DIR", personas):
+                result = await app_main.import_persona(app_main.ImportPersonaRequest(
+                    persona_id="alice", source_dir=str(source_dir)
+                ))
+
+            self.assertEqual(result.status_code, 409)
+            self.assertEqual(json.loads(result.body)["error"], "persona_exists")
+            self.assertEqual(sentinel.read_text(encoding="utf-8"), "existing")
+
+    async def test_persona_import_copy_failure_leaves_no_temp_directory(self):
+        import main as app_main
+
+        with tempfile.TemporaryDirectory(dir=TEST_TMP) as tmp:
+            root = Path(tmp)
+            source_dir = root / "source"
+            self._write_complete_persona(source_dir)
+            personas = root / "personas"
+            with mock.patch.object(app_main, "PERSONAS_DIR", personas), mock.patch(
+                "shutil.copy2", side_effect=OSError("copy failed")
+            ), mock.patch.object(app_main, "_index_persona_base", mock.AsyncMock()) as index_mock:
+                result = await app_main.import_persona(app_main.ImportPersonaRequest(
+                    persona_id="alice", source_dir=str(source_dir)
+                ))
+
+            self.assertEqual(result.status_code, 500)
+            self.assertEqual(json.loads(result.body)["error"], "import_failed")
+            self.assertTrue(personas.is_dir())
+            self.assertEqual(list(personas.iterdir()), [])
+            index_mock.assert_not_awaited()
 
 
 class SecretsTests(unittest.TestCase):
@@ -2214,7 +2427,7 @@ class FrontendXssTests(unittest.TestCase):
         self.assertNotIn('onclick="editPersonaStyle', settings)
         self.assertIn("summary.textContent", settings)
         self.assertNotIn("${data.error}", studio)
-        self.assertIn("error.textContent = String(data.error)", studio)
+        self.assertIn("line.textContent = text", studio)
         self.assertNotIn('onclick="${onClick}', studio)
         self.assertIn('card.addEventListener("click", loadPersona)', studio)
 

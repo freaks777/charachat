@@ -192,11 +192,11 @@
     <span class="validation-hint"></span>
     <label data-i18n="labelSourceDir">登録元フォルダ</label>
     <input id="d-source-dir" placeholder="../personas/my-character など">
-    <p class="setting-hint" data-i18n="hintSourceDir">SOUL.md / SKILL.md / style.yaml を含むフォルダのパス。3ファイル揃っていれば即登録、不足分は自動生成します。</p>
+    <p class="setting-hint" data-i18n="hintSourceDir">SOUL.md / SKILL.md / style.yaml がすべて揃ったフォルダを指定してください。不足・不正ファイルがある場合は登録できません。</p>
     <div id="file-validation" class="is-hidden studio-file-validation"></div>
     <div class="btn-row u-margin-top-12">
       <button id="studio-validate-files" class="btn btn-secondary btn-sm" data-i18n="btnValidate">ファイル確認</button>
-      <button id="studio-import" class="btn btn-primary" data-i18n="btnImport">登録</button>
+      <button id="studio-import" class="btn btn-primary" data-i18n="btnImport" disabled>登録</button>
     </div>
   </div>
 

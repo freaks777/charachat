@@ -15,9 +15,12 @@
 4. ✅ CSP Report-Onlyを導入・実測 — 5画面で `style-src-attr` 87件（Studio 73 / setup 6 / settings 4 / chat 3 / sessions 1）、その他の違反0件
 5. ✅ インラインstyle 87件をCSS classへ移行し、再実測0件を確認後にCSPを正式適用
 
-### 2. 追加課題
+### 2. 全体整合性修正
 
-現在なし。
+1. ✅ **Phase A（P1）**: Quick Start/config/venv契約とPersona Studio import契約をQS-A + PI-Bで実装・検証完了（Hermes最終承認待ち）
+2. ⏳ **Phase B（P2-high）**: `/api/chat`入力契約、auto-resume副作用順序、mutating API same-origin統一
+3. ⏳ **Phase C（P2）**: 旧session実データ確認後に互換維持またはmigration方針をユーザー判断
+4. ⏳ **Phase D（P2/P3）**: version体系、README・設計書・CHANGELOG、debug tool、未使用コード、State Tracking通しテストを整理
 
 P2 セッション削除とMemory DBの整合性はPhase 0〜4（一覧、schema/内部API、session削除、persona_base、persona削除）まで完了。
 P4 Persona Studio保存後の表示維持は完了。保存後も編集結果と操作領域を維持し、保存済み一覧だけを更新する。
