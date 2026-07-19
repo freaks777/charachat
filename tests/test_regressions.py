@@ -176,6 +176,57 @@ class PhaseCLegacySessionContractTests(unittest.TestCase):
         self.assertNotIn("YYYY-MM-DD.jsonl", bootstrap + source)
         self.assertNotIn("legacy session migration", bootstrap.lower() + source.lower())
 
+class PhaseDADocumentContractTests(unittest.TestCase):
+    def test_readme_documents_persona_storage_and_debug_tool(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("**Persona Studio**", readme)
+        for path in (
+            "sessions/{persona_id}/YYYY-MM-DD_HHMMSSRR.meta.json",
+            "sessions/{persona_id}/HHMMSSRR_state.json",
+            "sessions/{persona_id}/HHMMSSRR_state_history.jsonl",
+            "session-log/{persona_id}/YYYY-MM-DD_HHMMSSRR.md",
+        ):
+            self.assertIn(path, readme)
+        self.assertIn("`session_fact`", readme)
+        self.assertIn("`persona_base`", readme)
+        self.assertIn("`legacy`", readme)
+        self.assertIn("backend/debug_dump_api.py", readme)
+        self.assertIn("外部LLM APIを呼び出すため利用料金が発生し得ます", readme)
+        self.assertIn("backend/logs/api_debug/", readme)
+
+    def test_design_document_matches_current_ui_context_hooks_and_template(self):
+        design = (
+            ROOT / "document" / "RPスタンドアロンアプリ_設計書.md"
+        ).read_text(encoding="utf-8")
+        settings = (ROOT / "frontend" / "settings.html").read_text(encoding="utf-8")
+        context = (ROOT / "backend" / "core" / "session_context.py").read_text(
+            encoding="utf-8"
+        )
+        template = (
+            ROOT / "backend" / "plugins" / "_template" / "plugin.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertEqual(settings.count('class="tab-btn'), 6)
+        self.assertIn("設定画面（6タブ", design)
+        self.assertIn("plugin-ui.js", design)
+        self.assertIn('memory_scope: str = "session"', context)
+        self.assertIn('memory_scope: str = "session"', design)
+        self.assertIn("基本セットでの登録なし（拡張プラグイン用）", design)
+        self.assertIn("memory（記憶抽出）、session_log（ログ保存）、watchdog", design)
+        self.assertIn("backend/plugins/_template/", design)
+        self.assertIn("├── plugin.py", design)
+        self.assertNotIn("my_plugin.py", design)
+        self.assertIn("class TemplatePlugin", template)
+        self.assertIn("class TemplatePlugin", design)
+
+    def test_changelog_keeps_heading_separated(self):
+        changelog = (ROOT / "document" / "CHANGELOG.md").read_text(encoding="utf-8")
+        self.assertIn(
+            "`git diff --check` 問題なし\n\n"
+            "### 22.34 P7 Memory DB管理画面",
+            changelog.replace("\r\n", "\n"),
+        )
+
 class PhaseBApiBoundaryTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

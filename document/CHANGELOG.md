@@ -1329,6 +1329,7 @@ DOM挿入監査で確認したF1〜F3を修正。
 **変更ファイル**: `frontend/css/style.css`, `tests/test_regressions.py`, `document/RPスタンドアロンアプリ_設計書.md`, `document/CHANGELOG.md`, `document/backlog.md`
 
 **確認結果**: レスポンシブ契約テスト3件成功、全回帰96件成功、500px実画面確認、Python構文チェック成功、`git diff --check` 問題なし
+
 ### 22.34 P7 Memory DB管理画面（2026-07-17）
 
 - metadata-onlyの `GET /api/memory/records` を追加し、id/kind/persona/session/source/orphanだけを返却。documentとembeddingは取得・公開しない

@@ -16,6 +16,7 @@ Many roleplay apps exist, but some limit character customization or tie users to
 
 - **SOUL.md + SKILL.md** — キャラクターの人格・知識をマークダウンで定義
 - **マルチペルソナ** — 複数キャラを登録・切替可能
+- **Persona Studio** — フォーム入力・テキスト抽出・テスト会話によるペルソナ作成支援
 - **プラグイン機構** — secrets（機密情報マスク）/ memory（長期記憶）/ watchdog（離席監視）/ mail（メール通知）/ session_log 他
 - **マルチプロバイダ** — OpenAI互換APIを中心に複数プロバイダ対応（詳細は Supported Providers 参照）
 - **SPA フロントエンド** — チャット・セッション管理・ペルソナスタジオ・設定画面
@@ -152,14 +153,31 @@ Untested providers have no guarantee of working. The code path exists and should
 | データ | 保存先 | 形式 |
 |---|---|---|
 | 会話履歴 | `sessions/{persona_id}/YYYY-MM-DD_HHMMSSRR.jsonl` | JSONL |
-| 会話ログ | `session-log/*.md` | Markdown |
-| 長期記憶 | ChromaDB（`chroma.path`） | ベクトルDB |
+| セッションメタデータ | `sessions/{persona_id}/YYYY-MM-DD_HHMMSSRR.meta.json` | JSON |
+| 現在状態 | `sessions/{persona_id}/HHMMSSRR_state.json` | JSON |
+| 状態履歴 | `sessions/{persona_id}/HHMMSSRR_state_history.jsonl` | JSONL |
+| 会話ログ | `session-log/{persona_id}/YYYY-MM-DD_HHMMSSRR.md` | Markdown |
+| 長期記憶 | ChromaDB（`chroma.path`、既定値`data/chroma`） | ベクトルDB |
 | 機密情報 | `data/secrets_store.json` | JSON |
-| ペルソナ | `personas/*/` | Markdown + YAML |
+| ペルソナ | `personas/{persona_id}/` | Markdown + YAML |
 
 会話履歴の対応形式は`YYYY-MM-DD_HHMMSSRR.jsonl`だけです。旧`YYYY-MM-DD.jsonl`は互換・migration対象ではありません。アプリは旧形式を一覧・再開・削除せず、起動時の自動migrationや自動削除も行いません。
 
-ChromaDB の保存先と埋め込みモデルは `config.yaml` の `chroma` セクションで変更可能。
+ChromaDB の保存先と埋め込みモデルは `config.yaml` の `chroma` セクションで変更可能。Memoryレコードはmetadataの`kind`で`session_fact`（会話由来）、`persona_base`（SOUL.md / SKILL.md / style.yaml由来）、`legacy`（kind未設定の旧レコード）を区別します。
+
+## API Debug Dump
+
+`backend/debug_dump_api.py`は、設定済みOpenCode Go / DeepSeek系APIの生レスポンスを再現確認する開発用CLIです。通常起動には不要です。
+
+```bash
+# 簡易リクエストと抽出リクエスト
+.venv/Scripts/python.exe backend/debug_dump_api.py
+
+# 指定テキストで抽出リクエスト
+.venv/Scripts/python.exe backend/debug_dump_api.py --extract "確認するテキスト"
+```
+
+macOS / Linuxでは`.venv/bin/python`を使用します。実行すると外部LLM APIを呼び出すため利用料金が発生し得ます。ダンプは`backend/logs/api_debug/`へ保存され、request/response本文を含む場合があります。共有・commit前に機密情報や個人情報を確認してください。
 
 ## Disclaimer
 

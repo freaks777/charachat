@@ -119,7 +119,7 @@ F:\LLM\hermes-work\rp-standalone\
 │   ├── index.html                  # チャット画面
 │   ├── sessions.html               # セッション一覧
 │   ├── session-setup.html          # 新規セッション設定
-│   ├── settings.html               # 設定画面（4タブ、.setting-hint付き）
+│   ├── settings.html               # 設定画面（6タブ、.setting-hint付き）
 │   ├── studio.html                 # Persona Studio
 │   ├── css/
 │   │   └── style.css
@@ -129,7 +129,8 @@ F:\LLM\hermes-work\rp-standalone\
 │       ├── sessions.js
 │       ├── session-setup.js
 │       ├── settings.js
-│       └── studio.js
+│       ├── studio.js
+│       └── plugin-ui.js             # plugin UI共通描画
 │
 ├── personas/                       # ペルソナ定義
 │   ├── _template/                  # テンプレート（SOUL.md/SKILL.md/style.yaml）
@@ -569,6 +570,9 @@ class SessionContext:
     style: dict
     history: 'History'
 
+    # セッション設定
+    memory_scope: str = "session"  # "session" | "persona"
+
     # プラグイン用拡張領域
     extras: dict = field(default_factory=dict)
 
@@ -963,37 +967,41 @@ hook一覧、UIスロット、action API、テスト手順は [`plugin_developme
 | `on_user_message` | ユーザー入力直後 | `SessionContext` | secrets（マスキング）、watchdog（リセット） |
 | `on_build_context` | プロンプト構築直前 | `list[dict]`（messages） | memory（RAG検索注入）、secrets（リークチェック） |
 | `on_before_request` | API送信直前 | `list[dict]`（messages） | （予約） |
-| `on_response_complete` | AI応答完了後 | `str`（応答テキスト） | memory（記憶抽出）、session_log（ログ保存） |
+| `on_response_complete` | AI応答完了後 | `str`（応答テキスト） | 基本セットでの登録なし（拡張プラグイン用） |
 | `on_persona_switch` | ペルソナ切替時 | `SessionContext` | memory（コレクション切替） |
-| `on_session_end` | セッション終了時 | `SessionContext` | session_log、watchdog |
+| `on_session_end` | セッション終了時 | `SessionContext` | memory（記憶抽出）、session_log（ログ保存）、watchdog |
 
 ### 8.2 雛形ディレクトリ構成案
 
 ```
 backend/plugins/_template/
 ├── __init__.py
-├── my_plugin.py        # PluginBaseを継承した最小実装サンプル
-└── README.md            # このプラグインの目的・hooks・設定項目を書くテンプレート
+├── plugin.py           # PluginBaseを継承した実装・UI actionサンプル
+└── README.md           # コピー、rename、設定、テスト手順
 ```
 
 ```python
-# plugins/_template/my_plugin.py
-class MyPlugin(PluginBase):
-    name = "my_plugin"
-    hooks = ["on_user_message"]  # 必要なhookだけ列挙
+# plugins/_template/plugin.py（主要契約の抜粋）
+from plugins.base import PluginBase
 
-    async def run(self, hook: str, data, ctx: dict):
-        if hook == "on_user_message":
-            # ここに処理を書く
-            return data  # 書き換えなければそのまま返す、または None
-        return None
+class TemplatePlugin(PluginBase):
+    name = "my_plugin"
+    hooks = ["on_session_start"]
+    priority = 100
+    critical = False
+
+    async def run(self, hook: str, data, ctx):
+        # 状態を更新してもdata契約を維持する
+        return data
 
     def get_ui_slot(self) -> dict | list[dict] | None:
-        return None  # UI要素が不要ならNoneのまま
+        # 現行雛形はchat.toolbarのstatus/buttonと
+        # settings.pluginsのform例を返す
+        return [...]
 
     async def handle_ui_action(self, action: str, payload: dict, ctx) -> dict:
-        # payloadの必須キー・型・範囲等はプラグイン側で検証する
-        return {"status": "ok", "message": "完了", "data": {}}
+        # 未対応actionはerror、成功時はui_updatesを返す
+        return {"status": "ok", "message": "...", "data": {"ui_updates": [...]}}
 ```
 
 この雛形をコピーし、`name`と`hooks`を書き換えて`run()`を実装するだけで新規プラグインが追加できる構成を維持する。
