@@ -51,6 +51,8 @@ bash start_server.sh
 
 既存の`.venv`は再作成・自動更新せず、既存の`backend/config.yaml`は上書きしません。空のconfigが存在する場合も上書きせず、復旧手順を表示して停止します。Hugging Face cacheを変更したい場合は、`HF_HOME` / `SENTENCE_TRANSFORMERS_HOME`を利用者側で設定してください。
 
+起動時は専用`.venv`のpackage metadataを`requirements.txt`とread-onlyで照合します。依存drift、不足package、検査不能を検出した場合は警告とrepairコマンドを表示しますが、`.venv`を自動更新せずサーバー起動を継続します。案内は専用venvにpipがあれば`<venv-python> -m pip install -r requirements.txt`、pipがなくuvを利用できれば`uv pip install --python <venv-python> -r requirements.txt`を使用します。実行するかは利用者が判断してください。
+
 ブラウザで `http://localhost:8765` を開きます。
 
 ### ローカルAPIの入力・オリジン契約

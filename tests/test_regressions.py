@@ -3,6 +3,7 @@ import asyncio
 import json
 import os
 import re
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -137,6 +138,159 @@ class BootstrapContractTests(unittest.TestCase):
         self.assertIn('data.error === "persona_exists"', script)
         self.assertNotIn("不足分は自動生成", html + i18n)
         self.assertNotIn("auto-generated on import", i18n)
+
+class PhaseDCDependencyDriftTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "rp_bootstrap_drift", ROOT / "bootstrap.py"
+        )
+        cls.module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(cls.module)
+
+    def _temporary_requirement(self, requirement: str):
+        temp = tempfile.TemporaryDirectory(dir=TEST_TMP)
+        path = Path(temp.name) / "requirements.txt"
+        path.write_text(requirement + "\n", encoding="utf-8")
+        return temp, path
+
+    def test_dependency_check_uses_dedicated_python_and_clean_environment(self):
+        module = self.module
+        captured = {}
+
+        def runner(command, **kwargs):
+            captured["command"] = command
+            captured["kwargs"] = kwargs
+            return subprocess.CompletedProcess(command, 0, stdout='{"ok": true}', stderr="")
+
+        dedicated = ROOT / ".venv" / "dedicated-python"
+        with mock.patch.object(
+            module.os,
+            "environ",
+            {"PYTHONPATH": "foreign", "PYTHONHOME": "foreign", "KEEP": "yes"},
+        ):
+            result = module.check_venv_dependencies(ROOT, dedicated, runner=runner)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(captured["command"][0], str(dedicated))
+        self.assertNotIn("PYTHONPATH", captured["kwargs"]["env"])
+        self.assertNotIn("PYTHONHOME", captured["kwargs"]["env"])
+        self.assertEqual(captured["kwargs"]["timeout"], 10)
+
+    def test_dependency_check_accepts_satisfied_requirement_without_warning(self):
+        from importlib.metadata import version
+
+        temp, requirement = self._temporary_requirement(f"packaging=={version('packaging')}")
+        with temp, mock.patch.object(self.module, "REQUIREMENTS", requirement):
+            result = self.module.check_venv_dependencies(ROOT, Path(sys.executable))
+            with mock.patch("builtins.print") as printer:
+                self.module.warn_if_dependency_drift(ROOT, Path(sys.executable))
+        self.assertTrue(result["ok"])
+        printer.assert_not_called()
+
+    def test_dependency_check_detects_exact_pin_mismatch(self):
+        temp, requirement = self._temporary_requirement("packaging==0.0.0")
+        with temp, mock.patch.object(self.module, "REQUIREMENTS", requirement):
+            result = self.module.check_venv_dependencies(ROOT, Path(sys.executable))
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["mismatches"][0]["requirement"], "packaging==0.0.0")
+
+    def test_dependency_check_detects_range_mismatch(self):
+        temp, requirement = self._temporary_requirement("packaging<0")
+        with temp, mock.patch.object(self.module, "REQUIREMENTS", requirement):
+            result = self.module.check_venv_dependencies(ROOT, Path(sys.executable))
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["mismatches"][0]["installed"], __import__("importlib.metadata").metadata.version("packaging"))
+
+    def test_dependency_check_detects_missing_package(self):
+        temp, requirement = self._temporary_requirement(
+            "rp-standalone-package-that-does-not-exist==1"
+        )
+        with temp, mock.patch.object(self.module, "REQUIREMENTS", requirement):
+            result = self.module.check_venv_dependencies(ROOT, Path(sys.executable))
+        self.assertFalse(result["ok"])
+        self.assertEqual(len(result["missing"]), 1)
+
+    def test_dependency_check_failures_are_non_blocking_warnings(self):
+        module = self.module
+        failures = (
+            subprocess.CompletedProcess([], 1, stdout="", stderr="packaging unavailable"),
+            subprocess.CompletedProcess([], 0, stdout="not json", stderr=""),
+        )
+        for completed in failures:
+            with self.subTest(completed=completed):
+                runner = mock.Mock(return_value=completed)
+                with tempfile.TemporaryDirectory(dir=TEST_TMP) as tmp:
+                    root = Path(tmp)
+                    (root / "requirements.txt").write_text("example\n", encoding="utf-8")
+                    with mock.patch.object(module, "_repair_command", return_value="repair"), mock.patch(
+                        "builtins.print"
+                    ) as printer:
+                        module.warn_if_dependency_drift(root, Path("dedicated"), runner=runner)
+                self.assertTrue(any("WARNING" in str(call) for call in printer.call_args_list))
+
+    def test_dependency_check_timeout_is_non_blocking(self):
+        runner = mock.Mock(
+            side_effect=subprocess.TimeoutExpired(["dedicated", "-c"], timeout=10)
+        )
+        with mock.patch.object(self.module, "_repair_command", return_value="repair"), mock.patch(
+            "builtins.print"
+        ) as printer:
+            self.module.warn_if_dependency_drift(ROOT, Path("dedicated"), runner=runner)
+        self.assertTrue(any("timed out" in str(call) for call in printer.call_args_list))
+
+    def test_repair_command_prefers_venv_pip(self):
+        runner = mock.Mock(return_value=subprocess.CompletedProcess([], 0, stdout="pip", stderr=""))
+        command = self.module._repair_command(Path("repo"), Path("venv-python"), runner=runner)
+        self.assertIn('"venv-python" -m pip install -r', command)
+        self.assertNotIn("--upgrade", command)
+
+    def test_repair_command_falls_back_to_uv(self):
+        runner = mock.Mock(return_value=subprocess.CompletedProcess([], 1, stdout="", stderr=""))
+        with mock.patch.object(self.module.shutil, "which", return_value="uv"):
+            command = self.module._repair_command(Path("repo"), Path("venv-python"), runner=runner)
+        self.assertIn('uv pip install --python "venv-python" -r', command)
+        self.assertNotIn("--upgrade", command)
+
+    def test_repair_command_falls_back_to_manual_rebuild(self):
+        runner = mock.Mock(return_value=subprocess.CompletedProcess([], 1, stdout="", stderr=""))
+        with mock.patch.object(self.module.shutil, "which", return_value=None):
+            command = self.module._repair_command(Path("repo"), Path("venv-python"), runner=runner)
+        self.assertIn("Rebuild the dedicated .venv manually", command)
+
+    def test_warning_path_never_installs_or_recreates_environment(self):
+        module = self.module
+        responses = [
+            subprocess.CompletedProcess(
+                [], 0,
+                stdout='{"ok": false, "missing": [], "mismatches": [{"requirement": "x==1", "installed": "2"}], "error": ""}',
+                stderr="",
+            ),
+            subprocess.CompletedProcess([], 1, stdout="", stderr=""),
+        ]
+        runner = mock.Mock(side_effect=responses)
+        with tempfile.TemporaryDirectory(dir=TEST_TMP) as tmp, mock.patch.object(
+            module.shutil, "which", return_value=None
+        ):
+            root = Path(tmp)
+            (root / "requirements.txt").write_text("x==1\n", encoding="utf-8")
+            module.warn_if_dependency_drift(root, Path("dedicated"), runner=runner)
+        commands = [call.args[0] for call in runner.call_args_list]
+        self.assertFalse(any("install" in command or "venv" in command for command in commands))
+
+    def test_documented_contract_keeps_drift_check_non_blocking_and_read_only(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        design = (
+            ROOT / "document" / "RPスタンドアロンアプリ_設計書.md"
+        ).read_text(encoding="utf-8")
+        for document in (readme, design):
+            self.assertIn("依存drift", document)
+            self.assertIn("起動を継続", document)
+            self.assertIn("自動更新", document)
+        self.assertNotIn("--upgrade", readme + design)
 
 class PhaseCLegacySessionContractTests(unittest.TestCase):
     def test_runtime_session_apis_accept_only_canonical_filenames(self):

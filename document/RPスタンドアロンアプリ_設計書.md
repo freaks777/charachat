@@ -691,7 +691,7 @@ style:
   person: first
 ```
 
-**fresh clone bootstrap**: リポジトリルートの`bootstrap.py`を`start_server.bat` / `start_server.sh`から呼び、Python 3.11以上を確認する。`.venv`不在時だけvenv作成と`requirements.txt`導入を行い、既存venvは再作成・自動更新しない。`backend/config.yaml`不在時だけ`config.default.yaml`から初回コピーし、既存または空configは上書きしない。初回処理に失敗した場合はサーバーを起動せず非0終了する。cache保存先は固定せず、利用者が設定した`HF_HOME` / `SENTENCE_TRANSFORMERS_HOME`だけを尊重する。
+**fresh clone bootstrap**: リポジトリルートの`bootstrap.py`を`start_server.bat` / `start_server.sh`から呼び、Python 3.11以上を確認する。`.venv`不在時だけvenv作成と`requirements.txt`導入を行い、既存venvは再作成・自動更新しない。`backend/config.yaml`不在時だけ`config.default.yaml`から初回コピーし、既存または空configは上書きしない。初回処理に失敗した場合はサーバーを起動せず非0終了する。cache保存先は固定せず、利用者が設定した`HF_HOME` / `SENTENCE_TRANSFORMERS_HOME`だけを尊重する。起動ごとに専用venv Pythonを明示したsubprocessでpackage metadataと`requirements.txt`をread-only照合し、子processから`PYTHONPATH` / `PYTHONHOME`を除去する。依存drift・不足・検査不能時はwarningとpip/uv/manualのrepair案内を表示するが、install・upgrade・venv再作成は自動実行せず起動を継続する。
 **起動時バリデーション**: `.env` 不在時とアクティブプロバイダの `api_key` が空の場合に警告をログ出力（サーバーは起動継続）。
 **起動引数**: `--debug`（DEBUGログ有効）、`--model MODEL_ID`（config.yamlのモデルを上書き）。
 **ポート**: 8765（`python main.py` → `uvicorn.run(app, host="127.0.0.1", port=8765)`）。

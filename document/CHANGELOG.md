@@ -1392,3 +1392,16 @@ DOM挿入監査で確認したF1〜F3を修正。
 **変更ファイル**: `README.md`, `document/RPスタンドアロンアプリ_設計書.md`, `document/CHANGELOG.md`, `document/backlog.md`, `tests/test_regressions.py`
 
 **確認結果**: Phase C対象3件成功、正本`requirements.txt`を解決したuv隔離環境で全回帰123件成功、Python構文・compileall成功、JavaScript 7ファイル構文チェック成功、隔離環境のpip check問題なし、session file 0件・port 8765解放・`git diff --check`問題なし。既存system/workspace Pythonには依存version driftがあるため変更せず、隔離環境で正本契約を検証
+
+### 22.38 Phase D-c 専用venv依存drift検知（2026-07-21）
+
+- 起動ごとに専用venv Pythonのsubprocessで`requirements.txt`とinstalled package metadataをread-only照合
+- 子processから`PYTHONPATH` / `PYTHONHOME`を除去し、system PythonやHermes Agent環境の混入を防止
+- exact pin、range、missing packageをPEP 440準拠で検出し、検査不能も含めてnon-blocking warningとして起動継続
+- drift時は専用venvのpip、uv、手動再構築の順で利用可能なrepair案内を1つ表示
+- package install・upgrade・venv再作成・marker更新は自動実行せず、既存venv非更新契約を維持
+- workspace専用venvの実修復は本変更に含めず、別のユーザー承認事項として分離
+
+**変更ファイル**: `bootstrap.py`, `README.md`, `document/RPスタンドアロンアプリ_設計書.md`, `document/CHANGELOG.md`, `document/backlog.md`, `tests/test_regressions.py`
+
+**確認結果**: D-c対象17件（既存Bootstrap 5件 + D-c 12件）成功、正本`requirements.txt`隔離環境で全回帰143件成功、Python構文・compileall成功、JavaScript 7ファイル構文チェック成功、実workspace専用venvで`transformers 5.13.1 != 5.12.1`とuv repair案内をread-only確認、標準`start_server.bat`で`/sessions` 200・config hash不変・停止後port 8765解放、`git diff --check`問題なし
