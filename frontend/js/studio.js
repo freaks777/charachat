@@ -489,27 +489,6 @@ async function generateFromTemplate() {
   } catch (err) { setLoading(false); setStatus("通信エラー: " + err, true); }
 }
 
-async function convertRawText() {
-  if (_loading) return;
-  const text = document.getElementById("raw-text").value.trim();
-  if (!text) { setStatus("テキストを入力してください", true); return; }
-  const personaId = document.getElementById("t-persona-id").value.trim() || defaultPersonaId();
-  setLoading(true, "生成中...");
-  try {
-    const res = await fetch("/api/persona-studio/convert-freetext", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      signal: getStudioAbortController().signal,
-      body: JSON.stringify({ text, persona_id: personaId, style_override: getStyle() }),
-    });
-    const data = await res.json();
-    if (data.error) { setLoading(false); setStatus(data.error, true); return; }
-    showResult(data.draft);
-    fillTemplateForm(data.draft.soul_md || "");
-    setLoading(false);
-    setStatus(t("statusReady"));
-  } catch (err) { setLoading(false); setStatus("通信エラー: " + err, true); }
-}
-
 // ── 保存 ──
 async function saveDraft() {
   if (!hasDraft) { setStatus("先に生成してください", true); return; }

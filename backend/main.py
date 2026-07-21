@@ -2509,9 +2509,12 @@ async def delete_draft(req: LoadDraftRequest):
         return {"error": str(e)}
 
 
-@app.post("/api/persona-studio/convert-freetext")
+@app.post("/api/persona-studio/convert-freetext", deprecated=True)
 async def convert_freetext(req: ConvertFreetextRequest, request: Request):
-    """自由記述テキストをペルソナ形式に変換。"""
+    """非推奨の自由記述変換API。現行UIはextract-fields + create-templateを使用する。"""
+    logger.warning(
+        "deprecated endpoint used: POST /api/persona-studio/convert-freetext"
+    )
     if not plugin_manager.has("persona_studio"):
         return {"error": "persona_studio plugin not loaded"}
     try:

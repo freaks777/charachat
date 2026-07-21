@@ -23,8 +23,8 @@
 4. 🔎 **Phase D（P2/P3）**: 全体文書・version・保守性を段階的に整理
    - ✅ D-a 文書事実同期: 実装・検証・commit済み（`e9b2053`）
    - ✅ D-b version体系V-A（現行v3.11）: 実装・検証・commit済み（`f2de80b`）
-   - 🔎 D-c 依存drift検知: 実装・検証中
-   - ⏳ D-d 未使用・非推奨コード整理
+   - ✅ D-c 依存drift検知: 実装・検証・commit済み（`3175c4e`）
+   - 🔎 D-d 未使用・非推奨コード整理: 実装・検証中
    - ⏳ D-e State Tracking通しテスト
 
 P2 セッション削除とMemory DBの整合性はPhase 0〜4（一覧、schema/内部API、session削除、persona_base、persona削除）まで完了。
@@ -59,7 +59,7 @@ P7 Memory DB管理画面は完了。metadata-only統計・一覧と、選択/per
 
 | # | 内容 | 条件 |
 |---|------|------|
-| 2 | `History._load_latest()` で破損JSONLのrole並び検証がない | ファイル破損の報告時 |
+| 2 | 非推奨`POST /api/persona-studio/convert-freetext`の利用状況を再監査し、保持・削除を判断 | v3.12計画時 |
 | 3 | memory の意味的重複・別セッション間統合 | ペルソナスコープ検索で類似記憶が増えた時 |
 
 ---

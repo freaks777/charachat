@@ -1990,6 +1990,96 @@ class HistoryTests(unittest.TestCase):
             self.assertEqual([m["role"] for m in context], ["user", "assistant"])
 
 
+class PhaseDDMaintenanceContractTests(unittest.IsolatedAsyncioTestCase):
+    @classmethod
+    def setUpClass(cls):
+        import main as app_main
+
+        cls.app_main = app_main
+        cls.history_source = (ROOT / "backend" / "core" / "history.py").read_text(
+            encoding="utf-8"
+        )
+        cls.studio_source = (ROOT / "frontend" / "js" / "studio.js").read_text(
+            encoding="utf-8"
+        )
+        cls.sessions_source = (ROOT / "frontend" / "js" / "sessions.js").read_text(
+            encoding="utf-8"
+        )
+
+    def test_obsolete_history_loader_is_removed_and_specific_resume_remains(self):
+        tree = ast.parse(self.history_source)
+        definitions = [
+            node.name for node in ast.walk(tree)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        ]
+        self.assertNotIn("_load_latest", definitions)
+        self.assertNotIn("._load_latest(", self.history_source)
+        self.assertIn("def read_specific(", self.history_source)
+        self.assertIn("def _load_specific(", self.history_source)
+
+    def test_current_text_input_flow_remains_without_unused_converter(self):
+        html = (ROOT / "frontend" / "studio.html").read_text(encoding="utf-8")
+        self.assertIn('id="raw-text"', html)
+        self.assertIn("async function extractFields()", self.studio_source)
+        self.assertIn("async function generateFromTemplate()", self.studio_source)
+        self.assertNotIn("function convertRawText(", self.studio_source)
+        self.assertNotIn("/api/persona-studio/convert-freetext", self.studio_source)
+        self.assertNotIn("notImplemented", self.sessions_source)
+
+    def test_compatibility_endpoint_is_deprecated_in_openapi(self):
+        operation = self.app_main.app.openapi()["paths"][
+            "/api/persona-studio/convert-freetext"
+        ]["post"]
+        self.assertTrue(operation["deprecated"])
+
+    async def test_compatibility_endpoint_keeps_contract_guard_and_warning(self):
+        app_main = self.app_main
+        draft = {"soul_md": "Soul", "skill_md": "Skill", "style": {}}
+        studio = mock.MagicMock()
+        studio.convert_freetext = mock.AsyncMock(return_value=draft)
+        manager = mock.MagicMock()
+        manager.has.return_value = True
+        manager.get.return_value = studio
+
+        async def run_guard(request, coro):
+            return await coro
+
+        request = mock.MagicMock()
+        with mock.patch.object(app_main, "plugin_manager", manager), mock.patch.object(
+            app_main, "_run_with_disconnect_guard", mock.AsyncMock(side_effect=run_guard)
+        ) as guard, self.assertLogs("rp-standalone", level="WARNING") as logs:
+            result = await app_main.convert_freetext(
+                app_main.ConvertFreetextRequest(
+                    text="persona source",
+                    persona_id="alice",
+                    style_override={"tone": "quiet"},
+                ),
+                request,
+            )
+
+        self.assertEqual(result, {"status": "ok", "draft": draft})
+        studio.convert_freetext.assert_awaited_once_with(
+            "persona source", {"tone": "quiet"}
+        )
+        guard.assert_awaited_once()
+        self.assertIs(guard.await_args.args[0], request)
+        self.assertIn("deprecated endpoint used", "\n".join(logs.output))
+
+    def test_documents_define_retention_and_current_ui_contract(self):
+        design = (
+            ROOT / "document" / "RPスタンドアロンアプリ_設計書.md"
+        ).read_text(encoding="utf-8")
+        changelog = (ROOT / "document" / "CHANGELOG.md").read_text(encoding="utf-8")
+        backlog = (ROOT / "document" / "backlog.md").read_text(encoding="utf-8")
+        for source in (design, changelog, backlog):
+            self.assertIn("/api/persona-studio/convert-freetext", source)
+            self.assertIn("v3.12", source)
+        self.assertIn("extract-fields", design)
+        self.assertIn("create-template", design)
+        self.assertIn("### 22.39 Phase D-d", changelog)
+        self.assertIn("3175c4e", backlog)
+        self.assertNotIn("History._load_latest()", backlog)
+
 class PersonaStyleTests(unittest.TestCase):
     def test_global_style_is_base_and_persona_style_overrides_it(self):
         with tempfile.TemporaryDirectory(dir=TEST_TMP) as tmp:

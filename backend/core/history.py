@@ -196,31 +196,3 @@ class History:
             f.write("\n".join(lines) + "\n")
         os.replace(temp_file, self.today_file)
         self._saved_message_count = len(self._messages)
-
-    def _load_latest(self):
-        """最新の履歴ファイルから直近のメッセージを読み込む。"""
-        if not self.persona_dir.exists():
-            return
-
-        # 日付降順でファイルを探す
-        jsonl_files = sorted(
-            self.persona_dir.glob("*.jsonl"),
-            reverse=True,
-        )
-        if not jsonl_files:
-            return
-
-        # 最新ファイルから読み込み
-        lines = jsonl_files[0].read_text(encoding="utf-8").strip().split("\n")
-        for line in lines:
-            if not line.strip():
-                continue
-            try:
-                msg = json.loads(line)
-                self._messages.append(msg)
-            except json.JSONDecodeError:
-                continue
-
-        # トークン制限を適用
-        self.trim()
-        self._saved_message_count = len(self._messages)

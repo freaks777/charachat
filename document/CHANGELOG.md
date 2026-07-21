@@ -1405,3 +1405,13 @@ DOM挿入監査で確認したF1〜F3を修正。
 **変更ファイル**: `bootstrap.py`, `README.md`, `document/RPスタンドアロンアプリ_設計書.md`, `document/CHANGELOG.md`, `document/backlog.md`, `tests/test_regressions.py`
 
 **確認結果**: D-c対象17件（既存Bootstrap 5件 + D-c 12件）成功、正本`requirements.txt`隔離環境で全回帰143件成功、Python構文・compileall成功、JavaScript 7ファイル構文チェック成功、実workspace専用venvで`transformers 5.13.1 != 5.12.1`とuv repair案内をread-only確認、標準`start_server.bat`で`/sessions` 200・config hash不変・停止後port 8765解放、`git diff --check`問題なし
+
+### 22.39 Phase D-d 未使用・非推奨コード整理（2026-07-21）
+
+- 旧session互換撤回後に呼出元がなかった`History._load_latest()`を削除し、明示sessionの`read_specific()` / `_load_specific()`契約を維持
+- 現行UIで未使用の`convertRawText()`と`notImplemented`翻訳キーを削除
+- テキスト入力UIを`extract-fields` → `create-template`の現行フローへ統一
+- 外部ローカルクライアント互換のため`POST /api/persona-studio/convert-freetext`はv3.11で維持し、OpenAPI非推奨表示と利用時warningを追加
+- 同APIのrequest/response、same-origin、切断検知契約は維持し、v3.12計画時に利用状況を再監査して保持・削除を判断
+
+**変更ファイル**: `backend/core/history.py`, `backend/main.py`, `frontend/js/studio.js`, `frontend/js/sessions.js`, `document/RPスタンドアロンアプリ_設計書.md`, `document/CHANGELOG.md`, `document/backlog.md`, `tests/test_regressions.py`

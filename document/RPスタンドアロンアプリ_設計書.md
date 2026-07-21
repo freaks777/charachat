@@ -804,9 +804,11 @@ chroma:
 | タブ | 機能 | 使用API |
 |------|------|---------|
 | 固定フォーム | 名前・性格・口調・背景・禁止事項・スタイルを入力 → LLMでSOUL/SKILL生成 | `create-template` |
-| テキスト入力 | 自由記述・SOUL.mdテキストを貼り付け → LLMでペルソナ形式に変換 | `convert-freetext` |
+| テキスト入力 | 自由記述・SOUL.mdテキストを貼り付け → 構造化フィールド抽出 → 固定フォームからSOUL/SKILL生成 | `extract-fields` → `create-template` |
 | ファイル指定 | フォルダパス指定 → 3ファイルの存在・内容検証 → 完成personaだけ新規登録 | `validate-files` + `import` |
 | ペルソナ一覧 | 登録済みペルソナの読込・削除。クリックで読込、ダブルクリックで削除 | `load` / `delete` |
+
+**非推奨API**: `POST /api/persona-studio/convert-freetext` は外部ローカルクライアント互換のためv3.11では維持する。現行UIからは使用せず、OpenAPI上で非推奨とし、利用時にwarningを記録する。v3.12計画時に利用状況を再監査して保持・削除を判断する。
 
 **ファイル指定の検証**: `POST /api/persona-studio/validate-files` は`SOUL.md` / `SKILL.md` / `style.yaml`の存在、非空UTF-8、style schemaを検証し、`complete` / `incomplete` / `invalid`を返す。importは不足を`incomplete_persona`、不正内容を`invalid_persona_file`として422で拒否する。既存persona IDは`persona_exists`の409とし、無断上書きしない。完成ファイルは同一filesystem上の一時ディレクトリへコピー・再検証後に確定し、失敗時はdestinationや一時ディレクトリを残さない。成功後だけ`persona_base`を索引化する。
 
